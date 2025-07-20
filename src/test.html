@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Debug Test Window</title>
+    <style>
+        body {
+            background: linear-gradient(45deg, #ff6b6b, #4ecdc4);
+            color: white;
+            font-family: Arial, sans-serif;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            margin: 0;
+            text-align: center;
+        }
+        .container {
+            background: rgba(255, 255, 255, 0.1);
+            padding: 40px;
+            border-radius: 20px;
+            backdrop-filter: blur(10px);
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+        }
+        h1 {
+            font-size: 3em;
+            margin: 0 0 20px 0;
+        }
+        p {
+            font-size: 1.2em;
+            margin: 10px 0;
+        }
+        .close-btn {
+            background: rgba(255, 255, 255, 0.3);
+            border: none;
+            color: white;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 1em;
+            margin-top: 20px;
+        }
+        .close-btn:hover {
+            background: rgba(255, 255, 255, 0.5);
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🧪 TEST SUCCESS!</h1>
+        <p>✅ Debug window is working perfectly!</p>
+        <p>📁 File: test.html</p>
+        <p>🕒 Loaded at: <span id="timestamp"></span></p>
+        <button class="close-btn" onclick="closeWindow()">✕ Close Window</button>
+    </div>
+
+    <script>
+        console.log('🎉 Test HTML loaded successfully!');
+        document.getElementById('timestamp').textContent = new Date().toLocaleTimeString();
+        
+        async function closeWindow() {
+            try {
+                if (window.__TAURI__) {
+                    const { invoke } = window.__TAURI__.core;
+                    await invoke('close_window', { label: 'debug_test' });
+                } else {
+                    window.close();
+                }
+            } catch (error) {
+                console.error('Error closing window:', error);
+                window.close();
+            }
+        }
+        
+        // Also allow Escape key to close
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                closeWindow();
+            }
+        });
+        
+        console.log('🎯 Test window setup complete!');
+    </script>
+</body>
+</html> 

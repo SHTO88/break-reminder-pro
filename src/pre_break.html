@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Pre-Break Notification</title>
+    <style>
+      body {
+        background: #fffbe6;
+        color: #222;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        height: 100vh;
+        margin: 0;
+        font-family: Inter, Arial, sans-serif;
+      }
+      .pre-break {
+        background: #ffe21c;
+        color: #222;
+        padding: 1.5rem 2.5rem;
+        border-radius: 14px;
+        font-size: 1.5rem;
+        font-weight: 600;
+        box-shadow: 0 2px 12px rgba(255, 226, 28, 0.12);
+      }
+      .countdown {
+        font-size: 2rem;
+        font-weight: 700;
+        margin-top: 0.5rem;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="pre-break">
+      <div>Break in:</div>
+      <div class="countdown" id="pre-break-countdown">--:--</div>
+      <button onclick="closeWindow()" style="position: absolute; top: 10px; right: 10px; background: rgba(0,0,0,0.3); border: none; color: #222; padding: 5px 10px; border-radius: 4px; cursor: pointer;">
+        ✕ Close
+      </button>
+    </div>
+    <script>
+      console.log('Pre-break window HTML loaded successfully!');
+      document.title = 'Pre-Break Warning - LOADED';
+      
+      // Close window function
+      async function closeWindow() {
+        try {
+          const { invoke } = window.__TAURI__.core;
+          await invoke('close_window', { label: 'pre_break' });
+        } catch (error) {
+          console.error('Error closing window:', error);
+          // Fallback: try to close the current window directly
+          try {
+            const { getCurrentWindow } = window.__TAURI__.window;
+            await getCurrentWindow().close();
+          } catch (fallbackError) {
+            console.error('Fallback close failed:', fallbackError);
+          }
+        }
+      }
+      
+      // Also allow Escape key to close
+      document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+          closeWindow();
+        }
+      });
+      
+      let seconds = 300; // 5 min default //TODO: make this dynamic
+      function updateCountdown() {
+        const min = Math.floor(seconds / 60)
+          .toString()
+          .padStart(2, "0");
+        const sec = (seconds % 60).toString().padStart(2, "0");
+        const countdownEl = document.getElementById("pre-break-countdown");
+        if (countdownEl) {
+          countdownEl.textContent = `${min}:${sec}`;
+        }
+      }
+      
+      // Add error handling
+      try {
+        updateCountdown();
+        const interval = setInterval(() => {
+          seconds--;
+          updateCountdown();
+          if (seconds <= 0) clearInterval(interval);
+        }, 1000);
+        console.log('Pre-break countdown started successfully');
+      } catch (error) {
+        console.error('Error in pre-break window:', error);
+        document.body.innerHTML = `<div style="color: red; padding: 20px;">Error: ${error.message}</div>`;
+      }
+    </script>
+  </body>
+</html>

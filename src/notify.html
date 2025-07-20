@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Break Notification</title>
+    <style>
+      body {
+        background: #fff;
+        color: #222;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        height: 100vh;
+        margin: 0;
+        font-family: Inter, Arial, sans-serif;
+      }
+      .notify {
+        background: #24c8db;
+        color: #fff;
+        padding: 2rem 3rem;
+        border-radius: 16px;
+        font-size: 2rem;
+        font-weight: 600;
+        box-shadow: 0 2px 16px rgba(36, 200, 219, 0.15);
+      }
+      .countdown {
+        font-size: 2.5rem;
+        font-weight: 700;
+        margin-top: 1rem;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="notify">
+      <div>Break starting soon!</div>
+      <div class="countdown" id="notify-countdown">--:--</div>
+      <button onclick="closeWindow()" style="position: absolute; top: 10px; right: 10px; background: rgba(255,255,255,0.3); border: none; color: white; padding: 5px 10px; border-radius: 4px; cursor: pointer;">
+        ✕ Close
+      </button>
+    </div>
+    <script>
+      console.log('🔥 Notify window HTML loaded successfully!');
+      document.title = 'Break Notification - LOADED';
+      
+      // Force visible feedback immediately
+      document.body.style.border = '5px solid red';
+      console.log('🔥 Red border added for visibility test');
+      
+      // Check if this is being used as a test window
+      const isTestWindow = window.location.search.includes('test') || 
+                          (window.__TAURI__ && window.__TAURI__.window && 
+                           window.__TAURI__.window.getCurrentWindow().label === 'debug_test');
+      
+      // Wait for DOM to be fully ready
+      setTimeout(() => {
+        if (isTestWindow) {
+          console.log('🧪 Test mode detected, applying styling...');
+          document.title = 'Debug Test Window - LOADED';
+          const notifyDiv = document.querySelector('.notify');
+          const textDiv = document.querySelector('.notify div:first-child');
+          
+          if (notifyDiv && textDiv) {
+            textDiv.textContent = '🧪 Test Window Working!';
+            notifyDiv.style.background = '#8b5cf6';
+            console.log('✅ Running in test mode - styling applied');
+          } else {
+            console.error('❌ Could not find required elements for test styling');
+            // Fallback: replace entire body content
+            document.body.innerHTML = `
+              <div style="background: #8b5cf6; color: white; padding: 20px; text-align: center; font-family: Arial; height: 100vh; display: flex; align-items: center; justify-content: center; flex-direction: column;">
+                <h1>🧪 Test Window Working!</h1>
+                <p>Debug test window is functional</p>
+                <button onclick="closeWindow()" style="margin-top: 20px; padding: 10px 20px; background: rgba(255,255,255,0.3); border: none; color: white; border-radius: 4px; cursor: pointer;">✕ Close</button>
+              </div>
+            `;
+          }
+        }
+      }, 100);
+      
+      // Close window function
+      async function closeWindow() {
+        try {
+          const { invoke } = window.__TAURI__.core;
+          // Try to get the current window label from URL or use default
+          const windowLabel = window.location.search.includes('debug') ? 'debug_test' : 'notify';
+          await invoke('close_window', { label: windowLabel });
+        } catch (error) {
+          console.error('Error closing window:', error);
+          // Fallback: try to close the current window directly
+          try {
+            const { getCurrentWindow } = window.__TAURI__.window;
+            await getCurrentWindow().close();
+          } catch (fallbackError) {
+            console.error('Fallback close failed:', fallbackError);
+          }
+        }
+      }
+      
+      // Also allow Escape key to close
+      document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+          closeWindow();
+        }
+      });
+      
+      let seconds = 600; // 10 min default
+      function updateCountdown() {
+        const min = Math.floor(seconds / 60)
+          .toString()
+          .padStart(2, "0");
+        const sec = (seconds % 60).toString().padStart(2, "0");
+        const countdownEl = document.getElementById("notify-countdown");
+        if (countdownEl) {
+          countdownEl.textContent = `${min}:${sec}`;
+        }
+      }
+      
+      // Add error handling
+      try {
+        updateCountdown();
+        const interval = setInterval(() => {
+          seconds--;
+          updateCountdown();
+          if (seconds <= 0) clearInterval(interval);
+        }, 1000);
+        console.log('Notify countdown started successfully');
+      } catch (error) {
+        console.error('Error in notify window:', error);
+        document.body.innerHTML = `<div style="color: red; padding: 20px;">Error: ${error.message}</div>`;
+      }
+    </script>
+  </body>
+</html>

@@ -1,0 +1,19 @@
+{
+  "name": "break-reminder-pro-app",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "tauri": "tauri",
+    "dev": "tauri dev -- --profile dev",
+    "dev-fast": "tauri dev -- --profile dev-fast",
+    "build": "tauri build",
+    "build-debug": "tauri build --debug"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2"
+  },
+  "dependencies": {
+    "@tauri-apps/plugin-store": "^2"
+  }
+}

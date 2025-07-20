@@ -1,0 +1,24 @@
+[build]
+# Use faster linker on Windows
+rustflags = [
+  "-C", "link-arg=-fuse-ld=lld",  # Use LLD linker for faster linking
+]
+
+[cargo-new]
+vcs = "none"
+
+# Use sparse registry for faster dependency fetching
+[registries.crates-io]
+protocol = "sparse"
+
+# Cache optimizations
+[net]
+retry = 2
+git-fetch-with-cli = true
+
+# Target-specific optimizations for Windows
+[target.x86_64-pc-windows-msvc]
+rustflags = [
+  "-C", "link-arg=/DEBUG:NONE",     # Disable debug info in linking for speed
+  "-C", "target-cpu=native",        # Optimize for your specific CPU
+] 
