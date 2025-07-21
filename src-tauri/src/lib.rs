@@ -42,7 +42,13 @@ fn force_break_window(app_handle: tauri::AppHandle, duration: Option<u32>) -> Re
             .focused(true)
             .visible(true)
             .skip_taskbar(true)
-                        .build()
+            .maximized(true)
+            .position(0.0, 0.0)
+            .inner_size(1920.0, 1080.0) // Large size as fallback
+            .min_inner_size(800.0, 600.0)
+            .transparent(false) // Ensure no transparency issues
+            .shadow(false) // Remove window shadow
+            .build()
         {
             Ok(window) => {
                 println!("✅ Force break window created successfully!");
