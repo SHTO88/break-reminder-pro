@@ -103,7 +103,40 @@
         }
       });
       
-      let seconds = 600; // 10 min default
+      // Get break duration from URL parameters
+      function getBreakDuration() {
+        try {
+          // First try to get from URL parameters
+          const urlParams = new URLSearchParams(window.location.search);
+          const duration = urlParams.get('duration');
+          console.log('=== NOTIFY WINDOW DURATION PARSING ===');
+          console.log('Current URL:', window.location.href);
+          console.log('URL search params:', window.location.search);
+          console.log('Duration from URL:', duration);
+          
+          if (duration && !isNaN(parseInt(duration))) {
+            const durationInt = parseInt(duration);
+            console.log('Using duration from URL:', durationInt);
+            return durationInt;
+          }
+          
+          // Fallback to localStorage
+          const stored = localStorage.getItem('breakDuration');
+          console.log('Duration from localStorage:', stored);
+          if (stored && !isNaN(parseInt(stored))) {
+            return parseInt(stored);
+          }
+        } catch (error) {
+          console.error('Error getting break duration:', error);
+        }
+        
+        console.log('Using default duration: 600 seconds');
+        return 600; // 10 minutes default
+      }
+      
+      let seconds = getBreakDuration();
+      console.log('Final notify duration:', seconds, 'seconds');
+      
       function updateCountdown() {
         const min = Math.floor(seconds / 60)
           .toString()
@@ -121,9 +154,13 @@
         const interval = setInterval(() => {
           seconds--;
           updateCountdown();
-          if (seconds <= 0) clearInterval(interval);
+          if (seconds <= 0) {
+            clearInterval(interval);
+            console.log('Notify countdown finished, closing window');
+            closeWindow();
+          }
         }, 1000);
-        console.log('Notify countdown started successfully');
+        console.log('Notify countdown started successfully with', seconds, 'seconds');
       } catch (error) {
         console.error('Error in notify window:', error);
         document.body.innerHTML = `<div style="color: red; padding: 20px;">Error: ${error.message}</div>`;

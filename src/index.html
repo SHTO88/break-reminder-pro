@@ -1,342 +1,745 @@
 <!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <link rel="stylesheet" href="styles.css" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Break Reminder Pro</title>
-    <script type="module" src="/main.js" defer></script>
-  </head>
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Break Reminder Pro</title>
+  <script type="module" src="/main.js" defer></script>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
 
-  <body>
-    <div class="app-container">
-      <header class="app-header">
-        <h1 class="app-title">
-          <span class="icon">⏰</span>
-          Break Reminder Pro
-        </h1>
-        <p class="app-subtitle">Take care of your health with smart break reminders</p>
-      </header>
+    :root {
+      --primary: #6366f1;
+      --primary-dark: #4f46e5;
+      --secondary: #64748b;
+      --success: #10b981;
+      --warning: #f59e0b;
+      --danger: #ef4444;
+      
+      --bg-primary: #0f172a;
+      --bg-secondary: #1e293b;
+      --bg-card: #334155;
+      --bg-hover: #475569;
+      
+      --text-primary: #f8fafc;
+      --text-secondary: #cbd5e1;
+      --text-muted: #94a3b8;
+      
+      --border: #475569;
+      --border-light: #64748b;
+      
+      --shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+      --shadow-lg: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
+      
+      --radius: 12px;
+      --radius-lg: 16px;
+    }
 
-      <main class="main-content">
-        <!-- Timer Display Section -->
-        <section class="timer-section">
-          <div class="timer-display">
-            <div class="timer-label" id="timer-label">Ready to start</div>
-            <div class="timer-countdown" id="timer-countdown">--:--</div>
-            <div class="timer-status" id="timer-status">Configure your break settings below</div>
-          </div>
-        </section>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: linear-gradient(135deg, var(--bg-primary) 0%, var(--bg-secondary) 100%);
+      color: var(--text-primary);
+      line-height: 1.6;
+      min-height: 100vh;
+    }
 
-        <!-- Settings Form -->
-        <form id="settings-form" class="settings-form">
-          <!-- Break Timer Settings -->
-          <div class="settings-card">
-            <h3 class="card-title">
-              <span class="card-icon">⏱️</span>
-              Break Timer
-            </h3>
-            
-            <div class="input-group">
-              <label class="input-label">Time until break:</label>
-              <div class="time-input-wrapper">
-                <input
-                  type="number"
-                  id="break-minutes"
-                  class="time-input-small"
-                  min="0"
-                  max="180"
-                  value="50"
-                  placeholder="MM"
-                />
-                <span class="input-separator">:</span>
-                <input
-                  type="number"
-                  id="break-seconds"
-                  class="time-input-small"
-                  min="0"
-                  max="59"
-                  value="0"
-                  placeholder="SS"
-                />
+    .container {
+      max-width: 900px;
+      margin: 0 auto;
+      padding: 1rem;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* Header */
+    .header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 1rem;
+      padding-bottom: 0.75rem;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      font-size: 1.5rem;
+      font-weight: 700;
+      color: var(--primary);
+    }
+
+    .logo-icon {
+      font-size: 2rem;
+    }
+
+    .settings-btn {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.75rem 1.5rem;
+      background: var(--primary);
+      border: none;
+      border-radius: var(--radius);
+      color: white;
+      text-decoration: none;
+      font-size: 0.95rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      box-shadow: var(--shadow);
+    }
+
+    .settings-btn:hover {
+      background: var(--primary-dark);
+      transform: translateY(-1px);
+      box-shadow: var(--shadow-lg);
+    }
+
+    /* Main Content */
+    .main-content {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+    }
+
+    /* Timer Display */
+    .timer-hero {
+      background: var(--bg-card);
+      border-radius: var(--radius-lg);
+      padding: 2rem 1.5rem;
+      text-align: center;
+      margin-bottom: 1rem;
+      border: 1px solid var(--border);
+      width: 100%;
+      max-width: 500px;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .timer-hero::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 2px;
+      background: linear-gradient(90deg, transparent, var(--primary), transparent);
+    }
+
+    .timer-countdown {
+      font-size: 3rem;
+      font-weight: 300;
+      color: var(--primary);
+      margin-bottom: 0.5rem;
+      font-family: 'SF Mono', 'Monaco', 'Cascadia Code', monospace;
+      text-shadow: 0 0 20px rgba(99, 102, 241, 0.3);
+    }
+
+    .timer-label {
+      color: var(--text-muted);
+      font-size: 0.9rem;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      font-weight: 500;
+      margin-bottom: 0.5rem;
+    }
+
+    .timer-status {
+      color: var(--text-secondary);
+      font-size: 0.9rem;
+      margin-bottom: 1.5rem;
+    }
+
+    .timer-controls {
+      display: flex;
+      gap: 1rem;
+      justify-content: center;
+    }
+
+    /* Settings Panel - When Timer Not Running */
+    .settings-panel {
+      background: var(--bg-card);
+      border-radius: var(--radius);
+      padding: 1.5rem;
+      border: 1px solid var(--border);
+      width: 100%;
+      max-width: 700px;
+      margin-bottom: 0.5rem;
+    }
+
+    .settings-form {
+      display: flex;
+      flex-direction: column;
+      gap: 1.5rem;
+    }
+
+    .settings-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1.5rem;
+    }
+
+    .settings-actions {
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+      align-items: center;
+    }
+
+    /* Running Panel - When Timer Running */
+    .running-panel {
+      background: var(--bg-card);
+      border-radius: var(--radius);
+      padding: 1rem;
+      border: 1px solid var(--border);
+      width: 100%;
+      max-width: 700px;
+      margin-bottom: 0.5rem;
+    }
+
+    .running-info {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 1rem;
+      margin-bottom: 1rem;
+    }
+
+    .running-controls {
+      display: flex;
+      gap: 1rem;
+      justify-content: center;
+    }
+
+    .info-item {
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+    }
+
+    .info-label {
+      color: var(--text-muted);
+      font-size: 0.85rem;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      font-weight: 500;
+    }
+
+    .info-value {
+      color: var(--text-primary);
+      font-size: 1.1rem;
+      font-weight: 600;
+    }
+
+    /* Form Elements */
+    .form-group {
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+    }
+
+    .form-label {
+      color: var(--text-primary);
+      font-weight: 500;
+      font-size: 0.9rem;
+    }
+
+    .time-inputs {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      justify-content: center;
+    }
+
+    .time-input {
+      background: var(--bg-secondary);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 0.75rem;
+      color: var(--text-primary);
+      font-size: 1.1rem;
+      font-weight: 500;
+      width: 70px;
+      text-align: center;
+      transition: all 0.2s ease;
+    }
+
+    .time-input:focus {
+      outline: none;
+      border-color: var(--primary);
+      box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
+    }
+
+    .time-separator {
+      color: var(--text-primary);
+      font-weight: 600;
+      font-size: 1.5rem;
+    }
+
+    .time-label {
+      color: var(--text-muted);
+      font-size: 0.8rem;
+      text-align: center;
+      margin-top: 0.25rem;
+    }
+
+    /* Radio Groups - Horizontal Layout for Break Mode */
+    .radio-group-horizontal {
+      display: flex;
+      gap: 0.75rem;
+      flex-wrap: wrap;
+    }
+
+    .radio-option {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.6rem 0.8rem;
+      border-radius: var(--radius);
+      border: 1px solid var(--border);
+      cursor: pointer;
+      transition: all 0.2s ease;
+      background: var(--bg-secondary);
+      flex: 1;
+      min-width: 100px;
+    }
+
+    .radio-option:hover {
+      border-color: var(--border-light);
+      background: var(--bg-hover);
+    }
+
+    .radio-option input[type="radio"] {
+      display: none;
+    }
+
+    .radio-custom {
+      width: 16px;
+      height: 16px;
+      border: 2px solid var(--border-light);
+      border-radius: 50%;
+      position: relative;
+      flex-shrink: 0;
+      transition: all 0.2s ease;
+    }
+
+    .radio-option input[type="radio"]:checked + .radio-custom {
+      border-color: var(--primary);
+      background: var(--primary);
+      box-shadow: 0 0 10px rgba(99, 102, 241, 0.3);
+    }
+
+    .radio-option input[type="radio"]:checked + .radio-custom::after {
+      content: '';
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      width: 6px;
+      height: 6px;
+      background: white;
+      border-radius: 50%;
+    }
+
+    .radio-content {
+      flex: 1;
+      text-align: left;
+    }
+
+    .radio-title {
+      font-weight: 600;
+      font-size: 0.9rem;
+      line-height: 1.2;
+    }
+
+    .radio-desc {
+      color: var(--text-muted);
+      font-size: 0.75rem;
+      line-height: 1.2;
+    }
+
+    /* Compact displays for running state */
+    .break-mode-compact {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.5rem 1rem;
+      background: var(--bg-secondary);
+      border-radius: var(--radius);
+      border: 1px solid var(--border);
+    }
+
+    .mode-icon-compact {
+      font-size: 1rem;
+    }
+
+    .mode-text-compact {
+      font-size: 0.9rem;
+      font-weight: 500;
+    }
+
+    .toggle-compact {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.5rem 1rem;
+      background: var(--bg-secondary);
+      border-radius: var(--radius);
+      border: 1px solid var(--border);
+    }
+
+    .toggle-status {
+      font-size: 0.9rem;
+      font-weight: 500;
+    }
+
+    .status-on {
+      color: var(--success);
+    }
+
+    .status-off {
+      color: var(--text-muted);
+    }
+
+    /* Toggle Switch */
+    .toggle-option {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      padding: 0.8rem;
+      border-radius: var(--radius);
+      border: 1px solid var(--border);
+      cursor: pointer;
+      transition: all 0.2s ease;
+      background: var(--bg-secondary);
+    }
+
+    .toggle-option:hover {
+      border-color: var(--border-light);
+      background: var(--bg-hover);
+    }
+
+    .toggle-option input[type="checkbox"] {
+      display: none;
+    }
+
+    .toggle-switch {
+      width: 44px;
+      height: 24px;
+      background: var(--bg-primary);
+      border-radius: 12px;
+      position: relative;
+      flex-shrink: 0;
+      transition: all 0.3s ease;
+      border: 1px solid var(--border-light);
+    }
+
+    .toggle-switch::after {
+      content: '';
+      position: absolute;
+      top: 2px;
+      left: 2px;
+      width: 18px;
+      height: 18px;
+      background: var(--text-muted);
+      border-radius: 50%;
+      transition: all 0.3s ease;
+    }
+
+    .toggle-option input[type="checkbox"]:checked + .toggle-switch {
+      background: var(--primary);
+      border-color: var(--primary);
+      box-shadow: 0 0 10px rgba(99, 102, 241, 0.3);
+    }
+
+    .toggle-option input[type="checkbox"]:checked + .toggle-switch::after {
+      left: 22px;
+      background: white;
+    }
+
+    .toggle-content {
+      flex: 1;
+      text-align: left;
+    }
+
+    .toggle-title {
+      font-weight: 600;
+      margin-bottom: 0.25rem;
+      font-size: 1rem;
+    }
+
+    .toggle-desc {
+      color: var(--text-muted);
+      font-size: 0.85rem;
+    }
+
+    /* Buttons */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.5rem;
+      padding: 0.8rem 1.5rem;
+      border: none;
+      border-radius: var(--radius);
+      font-weight: 600;
+      font-size: 0.95rem;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      text-decoration: none;
+    }
+
+    .btn-primary {
+      background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+      color: white;
+      box-shadow: var(--shadow);
+    }
+
+    .btn-primary:hover {
+      transform: translateY(-2px);
+      box-shadow: var(--shadow-lg);
+    }
+
+    .btn-secondary {
+      background: var(--bg-secondary);
+      color: var(--text-secondary);
+      border: 1px solid var(--border);
+    }
+
+    .btn-secondary:hover {
+      background: var(--bg-hover);
+      color: var(--text-primary);
+      border-color: var(--border-light);
+    }
+
+    .btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+      transform: none !important;
+    }
+
+    /* Animations */
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.7; }
+    }
+
+    .pulse {
+      animation: pulse 2s infinite;
+    }
+
+    /* Responsive */
+    @media (max-width: 768px) {
+      .container {
+        padding: 0.75rem;
+      }
+      
+      .timer-hero {
+        padding: 1.5rem 1rem;
+      }
+      
+      .timer-countdown {
+        font-size: 2.5rem;
+      }
+      
+      .settings-row {
+        grid-template-columns: 1fr;
+        gap: 1rem;
+      }
+      
+      .radio-group-horizontal {
+        flex-direction: column;
+      }
+      
+      .running-info {
+        grid-template-columns: repeat(2, 1fr);
+        gap: 0.75rem;
+      }
+      
+      .timer-controls, .running-controls {
+        flex-direction: column;
+        gap: 0.75rem;
+      }
+    }
+
+    @media (max-width: 480px) {
+      .timer-countdown {
+        font-size: 2rem;
+      }
+      
+      .time-inputs {
+        justify-content: center;
+      }
+      
+      .running-info {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    /* Utility */
+    .hidden {
+      display: none !important;
+    }
+  </style>
+</head>
+
+<body>
+  <div class="container">
+    <!-- Header -->
+    <header class="header">
+      <div class="logo">
+        <span class="logo-icon">⏰</span>
+        <span>Break Reminder Pro</span>
+      </div>
+      <a href="settings.html" class="settings-btn">
+        <span>⚙️</span>
+        Settings
+      </a>
+    </header>
+
+    <!-- Main Content -->
+    <main class="main-content">
+      <!-- Timer Hero Section (shown when timer running) -->
+      <div class="timer-hero hidden" id="timer-hero">
+        <div class="timer-countdown" id="timer-countdown">--:--</div>
+        <div class="timer-label" id="timer-label">Break Timer Running</div>
+        <div class="timer-status" id="timer-status">Take a break when the timer reaches zero</div>
+        
+        <div class="timer-controls">
+          <button type="button" class="btn btn-secondary" id="pause-timer">
+            <span>⏸️</span>
+            Pause
+          </button>
+          <button type="button" class="btn btn-secondary" id="stop-timer">
+            <span>⏹️</span>
+            Stop Timer
+          </button>
+        </div>
+      </div>
+
+      <!-- Settings Panel (shown when timer not running) -->
+      <div class="settings-panel" id="settings-panel">
+        <form id="timer-form" class="settings-form">
+          <!-- Time inputs row -->
+          <div class="settings-row">
+            <div class="form-group">
+              <label class="form-label">Time until break:</label>
+              <div class="time-inputs">
+                <div>
+                  <input type="number" id="break-minutes" class="time-input" min="0" max="180" value="50" placeholder="MM" />
+                  <div class="time-label">MIN</div>
+                </div>
+                <span class="time-separator">:</span>
+                <div>
+                  <input type="number" id="break-seconds" class="time-input" min="0" max="59" value="0" placeholder="SS" />
+                  <div class="time-label">SEC</div>
+                </div>
               </div>
             </div>
 
-            <div class="input-group">
-              <label class="input-label">Break duration:</label>
-              <div class="time-input-wrapper">
-                <input
-                  type="number"
-                  id="break-duration-minutes"
-                  class="time-input-small"
-                  min="0"
-                  max="60"
-                  value="10"
-                  placeholder="MM"
-                />
-                <span class="input-separator">:</span>
-                <input
-                  type="number"
-                  id="break-duration-seconds"
-                  class="time-input-small"
-                  min="0"
-                  max="59"
-                  value="0"
-                  placeholder="SS"
-                />
+            <div class="form-group">
+              <label class="form-label">Break duration:</label>
+              <div class="time-inputs">
+                <div>
+                  <input type="number" id="break-duration-minutes" class="time-input" min="0" max="60" value="10" placeholder="MM" />
+                  <div class="time-label">MIN</div>
+                </div>
+                <span class="time-separator">:</span>
+                <div>
+                  <input type="number" id="break-duration-seconds" class="time-input" min="0" max="59" value="0" placeholder="SS" />
+                  <div class="time-label">SEC</div>
+                </div>
               </div>
             </div>
           </div>
 
-          <!-- Break Mode Settings -->
-          <div class="settings-card">
-            <h3 class="card-title">
-              <span class="card-icon">🎯</span>
-              Break Mode
-            </h3>
-            <div class="radio-group">
+          <!-- Break mode - horizontal layout -->
+          <div class="form-group">
+            <label class="form-label">Break mode:</label>
+            <div class="radio-group-horizontal">
               <label class="radio-option">
                 <input type="radio" name="break-mode" value="force" checked />
                 <span class="radio-custom"></span>
                 <div class="radio-content">
-                  <span class="radio-title">Force Break</span>
-                  <span class="radio-desc">Fullscreen break window (recommended)</span>
+                  <div class="radio-title">Force Break</div>
+                  <div class="radio-desc">Fullscreen</div>
                 </div>
               </label>
               <label class="radio-option">
                 <input type="radio" name="break-mode" value="notify" />
                 <span class="radio-custom"></span>
                 <div class="radio-content">
-                  <span class="radio-title">Notify Only</span>
-                  <span class="radio-desc">Show notification window</span>
+                  <div class="radio-title">Notify Only</div>
+                  <div class="radio-desc">Popup</div>
                 </div>
               </label>
               <label class="radio-option">
                 <input type="radio" name="break-mode" value="lock" />
                 <span class="radio-custom"></span>
                 <div class="radio-content">
-                  <span class="radio-title">Lock Screen</span>
-                  <span class="radio-desc">Lock computer screen</span>
+                  <div class="radio-title">Lock Screen</div>
+                  <div class="radio-desc">Lock PC</div>
                 </div>
               </label>
             </div>
           </div>
 
-          <!-- Smart Features -->
-          <div class="settings-card">
-            <h3 class="card-title">
-              <span class="card-icon">🧠</span>
-              Smart Features
-            </h3>
-            <div class="toggle-group">
-              <label class="toggle-option">
-                <input type="checkbox" id="auto-pause" />
-                <span class="toggle-switch"></span>
-                <div class="toggle-content">
-                  <span class="toggle-title">Auto-Pause Media</span>
-                  <span class="toggle-desc">Automatically pause music/videos</span>
-                </div>
-              </label>
-              <label class="toggle-option">
-                <input type="checkbox" id="meeting-detect" />
-                <span class="toggle-switch"></span>
-                <div class="toggle-content">
-                  <span class="toggle-title">Meeting Detection</span>
-                  <span class="toggle-desc">Skip breaks during video calls</span>
-                </div>
-              </label>
-              <label class="toggle-option">
-                <input type="checkbox" id="pre-break" />
-                <span class="toggle-switch"></span>
-                <div class="toggle-content">
-                  <span class="toggle-title">Pre-Break Warning</span>
-                  <span class="toggle-desc">Advance notification before break</span>
-                </div>
-              </label>
-              <div class="input-group" id="pre-break-timing-group" style="margin-top: 1rem; padding-left: 3rem; display: none;">
-                <label class="input-label">Warning time before break:</label>
-                <div class="time-input-wrapper">
-                  <input
-                    type="number"
-                    id="pre-break-minutes"
-                    class="time-input-small"
-                    min="0"
-                    max="10"
-                    value="0"
-                    placeholder="MM"
-                    title="Minutes before break (0-10)"
-                  />
-                  <span class="input-separator">:</span>
-                  <input
-                    type="number"
-                    id="pre-break-seconds"
-                    class="time-input-small"
-                    min="0"
-                    max="59"
-                    value="30"
-                    placeholder="SS"
-                    title="Seconds before break (0-59)"
-                  />
-                </div>
-                <small style="color: var(--text-muted); font-size: 0.85rem; margin-top: 0.5rem; display: block;">
-                  How much time before the break to show the warning notification
-                </small>
+          <!-- Actions -->
+          <div class="settings-actions">
+            <!-- Recurring toggle -->
+            <label class="toggle-option">
+              <input type="checkbox" id="recurring" />
+              <span class="toggle-switch"></span>
+              <div class="toggle-content">
+                <div class="toggle-title">Recurring Break Cycle</div>
+                <div class="toggle-desc">Continue breaks automatically</div>
               </div>
-              <label class="toggle-option">
-                <input type="checkbox" id="break-chime" />
-                <span class="toggle-switch"></span>
-                <div class="toggle-content">
-                  <span class="toggle-title">End-of-Break Chime</span>
-                  <span class="toggle-desc">Sound when break time ends</span>
-                </div>
-              </label>
-            </div>
-          </div>
-
-          <!-- Additional Options -->
-          <div class="settings-card">
-            <h3 class="card-title">
-              <span class="card-icon">⚙️</span>
-              Additional Options
-            </h3>
-            <div class="toggle-group">
-              <label class="toggle-option">
-                <input type="checkbox" id="recurring" />
-                <span class="toggle-switch"></span>
-                <div class="toggle-content">
-                  <span class="toggle-title">Recurring Break Cycle</span>
-                  <span class="toggle-desc">Continue breaks automatically</span>
-                </div>
-              </label>
-              <label class="toggle-option">
-                <input type="checkbox" id="autostart" />
-                <span class="toggle-switch"></span>
-                <div class="toggle-content">
-                  <span class="toggle-title">Auto-Start with Windows</span>
-                  <span class="toggle-desc">Launch on system startup</span>
-                </div>
-              </label>
-            </div>
-          </div>
-
-          <!-- Action Buttons -->
-          <div class="action-buttons">
-            <button type="submit" class="btn btn-primary">
-              <span class="btn-icon">▶️</span>
+            </label>
+            
+            <!-- Start button -->
+            <button type="button" class="btn btn-primary" id="start-timer">
+              <span>▶️</span>
               Start Break Timer
-            </button>
-            <button type="button" id="stop-timer" class="btn btn-secondary">
-              <span class="btn-icon">⏹️</span>
-              Stop Timer
             </button>
           </div>
         </form>
+      </div>
 
-        <!-- Debug Section -->
-        <div class="settings-card debug-section" id="debug-section" style="margin-top: 2rem; border: 2px dashed #666;">
-          <h3 class="card-title">
-            <span class="card-icon">🐛</span>
-            Debug & Testing
-            <button type="button" id="toggle-debug" class="btn" style="margin-left: auto; padding: 0.5rem 1rem; font-size: 0.8rem;">
-              Hide Debug
-            </button>
-          </h3>
-          
-          <div id="debug-content">
-            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-bottom: 1.5rem;">
-              
-              <!-- Break Testing -->
-              <div class="debug-group">
-                <h4 style="color: var(--text-secondary); margin-bottom: 0.75rem; font-size: 0.9rem;">Break Testing</h4>
-                <button type="button" id="debug-force-break" class="btn btn-primary" style="width: 100%; margin-bottom: 0.5rem; font-size: 0.85rem;">
-                  🖥️ Force Break Now
-                </button>
-                <button type="button" id="debug-pre-break" class="btn btn-primary" style="width: 100%; margin-bottom: 0.5rem; font-size: 0.85rem;">
-                  ⏰ Pre-Break Warning
-                </button>
-                <button type="button" id="debug-notify" class="btn btn-primary" style="width: 100%; margin-bottom: 0.5rem; font-size: 0.85rem;">
-                  🔔 Notify Window
-                </button>
-                <button type="button" id="debug-lock" class="btn btn-primary" style="width: 100%; font-size: 0.85rem;">
-                  🔒 Lock Screen
-                </button>
-              </div>
-
-              <!-- Timer Testing -->
-              <div class="debug-group">
-                <h4 style="color: var(--text-secondary); margin-bottom: 0.75rem; font-size: 0.9rem;">Quick Timers</h4>
-                <button type="button" id="debug-timer-10s" class="btn btn-secondary" style="width: 100%; margin-bottom: 0.5rem; font-size: 0.85rem;">
-                  ⏱️ 10 Second Timer
-                </button>
-                <button type="button" id="debug-timer-30s" class="btn btn-secondary" style="width: 100%; margin-bottom: 0.5rem; font-size: 0.85rem;">
-                  ⏱️ 30 Second Timer
-                </button>
-                <button type="button" id="debug-timer-60s" class="btn btn-secondary" style="width: 100%; margin-bottom: 0.5rem; font-size: 0.85rem;">
-                  ⏱️ 1 Minute Timer
-                </button>
-                <button type="button" id="debug-timer-5m" class="btn btn-secondary" style="width: 100%; font-size: 0.85rem;">
-                  ⏱️ 5 Minute Timer
-                </button>
-              </div>
-
-              <!-- Feature Testing -->
-              <div class="debug-group">
-                <h4 style="color: var(--text-secondary); margin-bottom: 0.75rem; font-size: 0.9rem;">Feature Testing</h4>
-                <button type="button" id="debug-media-pause" class="btn btn-secondary" style="width: 100%; margin-bottom: 0.5rem; font-size: 0.85rem;">
-                  ⏸️ Test Media Pause
-                </button>
-                <button type="button" id="debug-meeting-check" class="btn btn-secondary" style="width: 100%; margin-bottom: 0.5rem; font-size: 0.85rem;">
-                  👥 Check Meeting Status
-                </button>
-                <button type="button" id="debug-autostart-check" class="btn btn-secondary" style="width: 100%; margin-bottom: 0.5rem; font-size: 0.85rem;">
-                  🚀 Check Autostart Status
-                </button>
-                <button type="button" id="debug-clear-settings" class="btn" style="width: 100%; background: #ef4444; color: white; font-size: 0.85rem;">
-                  🗑️ Clear All Settings
-                </button>
-              </div>
-
-              <!-- Window Testing -->
-              <div class="debug-group">
-                <h4 style="color: var(--text-secondary); margin-bottom: 0.75rem; font-size: 0.9rem;">Window Controls</h4>
-                <button type="button" id="debug-close-force" class="btn btn-secondary" style="width: 100%; margin-bottom: 0.5rem; font-size: 0.85rem;">
-                  ❌ Close Force Break
-                </button>
-                <button type="button" id="debug-close-notify" class="btn btn-secondary" style="width: 100%; margin-bottom: 0.5rem; font-size: 0.85rem;">
-                  ❌ Close Notify
-                </button>
-                <button type="button" id="debug-close-prebreak" class="btn btn-secondary" style="width: 100%; margin-bottom: 0.5rem; font-size: 0.85rem;">
-                  ❌ Close Pre-Break
-                </button>
-                <button type="button" id="debug-show-main" class="btn btn-secondary" style="width: 100%; margin-bottom: 0.5rem; font-size: 0.85rem;">
-                  ⤴️ Show Main Window
-                </button>
-                <button type="button" id="debug-test-window" class="btn btn-secondary" style="width: 100%; margin-bottom: 0.5rem; font-size: 0.85rem;">
-                  🪟 Test Window
-                </button>
-                <button type="button" id="debug-test-sequence" class="btn" style="width: 100%; background: #8b5cf6; color: white; font-size: 0.85rem;">
-                  🧪 Test Full Sequence
-                </button>
-              </div>
-
+      <!-- Running Info Panel (shown when timer running) -->
+      <div class="running-panel hidden" id="running-panel">
+        <div class="running-info">
+          <div class="info-item">
+            <div class="info-label">Running Time</div>
+            <div class="info-value" id="running-time">--:--</div>
+          </div>
+          <div class="info-item">
+            <div class="info-label">Break Duration</div>
+            <div class="info-value" id="break-duration-display">--:--</div>
+          </div>
+          <div class="info-item">
+            <div class="info-label">Break Mode</div>
+            <div class="break-mode-compact" id="break-mode-compact">
+              <span class="mode-icon-compact" id="mode-icon-compact">🔒</span>
+              <span class="mode-text-compact" id="mode-text-compact">Force Break</span>
             </div>
-
-            <div style="display: flex; gap: 0.5rem; margin-bottom: 0.5rem;">
-              <button type="button" id="debug-help" class="btn" style="background: #059669; color: white; font-size: 0.75rem; padding: 0.25rem 0.75rem;">
-                ❓ Help
-              </button>
-              <button type="button" id="debug-clear" class="btn" style="background: #7c3aed; color: white; font-size: 0.75rem; padding: 0.25rem 0.75rem;">
-                🧹 Clear
-              </button>
-              <small style="color: var(--text-muted); font-size: 0.7rem; margin-left: auto; align-self: center;">
-                Ctrl+Shift+H for help | Right-click to copy logs
-              </small>
-            </div>
-            <div id="debug-output" style="background: #1a1a1a; color: #00ff00; padding: 1rem; border-radius: 8px; font-family: 'Courier New', monospace; font-size: 0.8rem; min-height: 100px; white-space: pre-wrap; overflow-y: auto; max-height: 200px; border: 1px solid #333; user-select: text;">Debug output will appear here...
+          </div>
+          <div class="info-item">
+            <div class="info-label">Auto Cycle</div>
+            <div class="toggle-compact" id="toggle-compact">
+              <span class="toggle-status status-off" id="toggle-status-display">Off</span>
             </div>
           </div>
         </div>
-      </main>
-    </div>
-  </body>
+      </div>
+    </main>
+  </div>
+</body>
 </html>

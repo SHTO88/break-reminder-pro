@@ -1,6 +1,6 @@
-use tauri::{WebviewWindowBuilder, WebviewUrl, Manager};
 use serde::{Deserialize, Serialize};
 use std::fs;
+use tauri::{Manager, WebviewUrl, WebviewWindowBuilder};
 
 // For autostart plugin
 use tauri_plugin_autostart::{MacosLauncher, ManagerExt};
@@ -27,9 +27,14 @@ struct AppSettings {
 fn force_break_window(app_handle: tauri::AppHandle, duration: Option<u32>) -> Result<(), String> {
     let break_duration = duration.unwrap_or(300); // Default 5 minutes
     let url = format!("force_break.html?duration={}", break_duration);
-    
-    println!("💥 Creating force break window with duration: {} seconds", break_duration);
-    
+
+    println!(
+        "💥 Creating force break window with duration: {} seconds",
+        break_duration
+    );
+    println!("🔗 URL being loaded: {}", url);
+    println!("📊 Duration parameter: {:?}", duration);
+
     // Create window in separate thread as recommended by Tauri docs
     let handle = app_handle.clone();
     std::thread::spawn(move || {
@@ -54,13 +59,21 @@ fn force_break_window(app_handle: tauri::AppHandle, duration: Option<u32>) -> Re
                 println!("✅ Force break window created successfully!");
                 println!("🎯 Window label: {}", window.label());
                 println!("📋 Expected content: Fullscreen break window with countdown");
+                
+                // Try to inject debugging JavaScript after a delay
+                std::thread::sleep(std::time::Duration::from_millis(1000));
+                let debug_js = format!(
+                    "console.log('🔥 Rust injected: Duration should be {} seconds'); console.log('🔗 Current URL:', window.location.href);",
+                    break_duration
+                );
+                let _ = window.eval(&debug_js);
             }
             Err(e) => {
                 println!("❌ Failed to create force break window: {}", e);
             }
         }
     });
-    
+
     println!("🚀 Force break window creation initiated in separate thread");
     Ok(())
 }
@@ -68,26 +81,32 @@ fn force_break_window(app_handle: tauri::AppHandle, duration: Option<u32>) -> Re
 #[tauri::command]
 fn close_window(app_handle: tauri::AppHandle, label: String) -> Result<(), String> {
     if let Some(window) = app_handle.get_webview_window(&label) {
-        window.close().map_err(|e| format!("Failed to close window {}: {}", label, e))?;
+        window
+            .close()
+            .map_err(|e| format!("Failed to close window {}: {}", label, e))?;
     }
     Ok(())
 }
 
 #[tauri::command]
-fn notify_window(app_handle: tauri::AppHandle) -> Result<(), String> {
-    println!("🔔 Creating notify window...");
+fn notify_window(app_handle: tauri::AppHandle, duration: Option<u32>) -> Result<(), String> {
+    let break_duration = duration.unwrap_or(600); // Default 10 minutes
+    let url = format!("notify.html?duration={}", break_duration);
     
+    println!("🔔 Creating notify window with duration: {} seconds", break_duration);
+    println!("🔗 URL being loaded: {}", url);
+
     // Close existing window if it exists
     if let Some(existing) = app_handle.get_webview_window("notify") {
         println!("📄 Closing existing notify window");
         let _ = existing.close();
     }
-    
+
     // Create window in separate thread as recommended by Tauri docs
     let handle = app_handle.clone();
     std::thread::spawn(move || {
-        println!("📂 Attempting to load: notify.html");
-        match WebviewWindowBuilder::new(&handle, "notify", WebviewUrl::App("notify.html".into()))
+        println!("📂 Attempting to load: {}", url);
+        match WebviewWindowBuilder::new(&handle, "notify", WebviewUrl::App(url.into()))
             .title("Break Notification")
             .always_on_top(true)
             .decorations(false)
@@ -102,17 +121,21 @@ fn notify_window(app_handle: tauri::AppHandle) -> Result<(), String> {
                 println!("✅ Notify window created successfully!");
                 println!("🎯 Window label: {}", window.label());
                 println!("📋 Expected content: Blue notification with countdown");
-                
+
                 // Try to inject some debugging JavaScript after a delay
                 std::thread::sleep(std::time::Duration::from_millis(500));
-                let _ = window.eval("console.log('🔥 Notify window JavaScript executed!'); document.title = 'NOTIFY WINDOW LOADED';");
+                let debug_js = format!(
+                    "console.log('🔥 Notify window JavaScript executed!'); console.log('🔗 Current URL:', window.location.href); console.log('⏰ Duration should be {} seconds');",
+                    break_duration
+                );
+                let _ = window.eval(&debug_js);
             }
             Err(e) => {
                 println!("❌ Failed to create notify window: {}", e);
             }
         }
     });
-    
+
     println!("🚀 Notify window creation initiated in separate thread");
     Ok(())
 }
@@ -120,33 +143,37 @@ fn notify_window(app_handle: tauri::AppHandle) -> Result<(), String> {
 #[tauri::command]
 fn pre_break_notification_window(app_handle: tauri::AppHandle) -> Result<(), String> {
     println!("⏰ Creating pre-break window...");
-    
+
     // Close existing window if it exists
     if let Some(existing) = app_handle.get_webview_window("pre_break") {
         println!("📄 Closing existing pre-break window");
         let _ = existing.close();
     }
-    
+
     // Create window in separate thread as recommended by Tauri docs
     let handle = app_handle.clone();
     std::thread::spawn(move || {
         println!("📂 Attempting to load: pre_break.html");
-        match WebviewWindowBuilder::new(&handle, "pre_break", WebviewUrl::App("pre_break.html".into()))
-            .title("Pre-Break Warning")
-            .always_on_top(true)
-            .decorations(false)
-            .resizable(false)
-            .inner_size(350.0, 180.0)
-            .position(150.0, 150.0)
-            .focused(true)
-            .visible(true)
-            .build()
+        match WebviewWindowBuilder::new(
+            &handle,
+            "pre_break",
+            WebviewUrl::App("pre_break.html".into()),
+        )
+        .title("Pre-Break Warning")
+        .always_on_top(true)
+        .decorations(false)
+        .resizable(false)
+        .inner_size(350.0, 180.0)
+        .position(150.0, 150.0)
+        .focused(true)
+        .visible(true)
+        .build()
         {
             Ok(window) => {
                 println!("✅ Pre-break window created successfully!");
                 println!("🎯 Window label: {}", window.label());
                 println!("📋 Expected content: Yellow pre-break warning with countdown");
-                
+
                 // Try to inject some debugging JavaScript after a delay
                 std::thread::sleep(std::time::Duration::from_millis(500));
                 let _ = window.eval("console.log('🔥 Pre-break window JavaScript executed!'); document.title = 'PRE-BREAK WINDOW LOADED';");
@@ -156,7 +183,7 @@ fn pre_break_notification_window(app_handle: tauri::AppHandle) -> Result<(), Str
             }
         }
     });
-    
+
     println!("🚀 Pre-break window creation initiated in separate thread");
     Ok(())
 }
@@ -164,7 +191,8 @@ fn pre_break_notification_window(app_handle: tauri::AppHandle) -> Result<(), Str
 #[tauri::command]
 async fn enable_autostart(app_handle: tauri::AppHandle) -> Result<(), String> {
     let autostart_manager = app_handle.autolaunch();
-    autostart_manager.enable()
+    autostart_manager
+        .enable()
         .map_err(|e| format!("Failed to enable autostart: {}", e))?;
     Ok(())
 }
@@ -172,7 +200,8 @@ async fn enable_autostart(app_handle: tauri::AppHandle) -> Result<(), String> {
 #[tauri::command]
 async fn disable_autostart(app_handle: tauri::AppHandle) -> Result<(), String> {
     let autostart_manager = app_handle.autolaunch();
-    autostart_manager.disable()
+    autostart_manager
+        .disable()
         .map_err(|e| format!("Failed to disable autostart: {}", e))?;
     Ok(())
 }
@@ -180,7 +209,8 @@ async fn disable_autostart(app_handle: tauri::AppHandle) -> Result<(), String> {
 #[tauri::command]
 async fn is_autostart_enabled(app_handle: tauri::AppHandle) -> Result<bool, String> {
     let autostart_manager = app_handle.autolaunch();
-    autostart_manager.is_enabled()
+    autostart_manager
+        .is_enabled()
         .map_err(|e| format!("Failed to check autostart status: {}", e))
 }
 
@@ -224,7 +254,13 @@ fn control_media(action: &str) -> Result<(), String> {
 #[tauri::command]
 fn is_meeting_active() -> Result<bool, String> {
     use sysinfo::System;
-    let meeting_processes = ["zoom.exe", "teams.exe", "skype.exe", "webex.exe", "meet.exe"];
+    let meeting_processes = [
+        "zoom.exe",
+        "teams.exe",
+        "skype.exe",
+        "webex.exe",
+        "meet.exe",
+    ];
     let sys = System::new_all();
     let found = sys.processes().values().any(|proc| {
         let name = proc.name().to_lowercase();
@@ -235,53 +271,57 @@ fn is_meeting_active() -> Result<bool, String> {
 
 #[tauri::command]
 fn save_settings(app_handle: tauri::AppHandle, settings: AppSettings) -> Result<(), String> {
-    let app_data_dir = app_handle.path().app_data_dir()
+    let app_data_dir = app_handle
+        .path()
+        .app_data_dir()
         .map_err(|e| format!("Failed to get app data directory: {}", e))?;
-    
+
     // Create the directory if it doesn't exist
     fs::create_dir_all(&app_data_dir)
         .map_err(|e| format!("Failed to create app data directory: {}", e))?;
-    
+
     let settings_path = app_data_dir.join("settings.json");
     let settings_json = serde_json::to_string_pretty(&settings)
         .map_err(|e| format!("Failed to serialize settings: {}", e))?;
-    
+
     fs::write(settings_path, settings_json)
         .map_err(|e| format!("Failed to write settings file: {}", e))?;
-    
+
     Ok(())
 }
 
 #[tauri::command]
 fn load_settings(app_handle: tauri::AppHandle) -> Result<Option<AppSettings>, String> {
-    let app_data_dir = app_handle.path().app_data_dir()
+    let app_data_dir = app_handle
+        .path()
+        .app_data_dir()
         .map_err(|e| format!("Failed to get app data directory: {}", e))?;
-    
+
     let settings_path = app_data_dir.join("settings.json");
-    
+
     if !settings_path.exists() {
         return Ok(None);
     }
-    
+
     let settings_json = fs::read_to_string(settings_path)
         .map_err(|e| format!("Failed to read settings file: {}", e))?;
-    
+
     let settings: AppSettings = serde_json::from_str(&settings_json)
         .map_err(|e| format!("Failed to parse settings: {}", e))?;
-    
+
     Ok(Some(settings))
 }
 
 #[tauri::command]
 fn debug_test_window(app_handle: tauri::AppHandle) -> Result<(), String> {
     println!("🧪 Creating debug test window...");
-    
+
     // Close existing window if it exists
     if let Some(existing) = app_handle.get_webview_window("debug_test") {
         println!("📄 Closing existing debug test window");
         let _ = existing.close();
     }
-    
+
     // Create window in separate thread as recommended by Tauri docs
     let handle = app_handle.clone();
     std::thread::spawn(move || {
@@ -301,7 +341,7 @@ fn debug_test_window(app_handle: tauri::AppHandle) -> Result<(), String> {
                 println!("✅ Debug test window created successfully!");
                 println!("🎯 Window label: {}", window.label());
                 println!("📋 Expected content: Colorful gradient with TEST SUCCESS message");
-                
+
                 // Try to inject some debugging JavaScript after a delay
                 std::thread::sleep(std::time::Duration::from_millis(500));
                 let _ = window.eval("console.log('🔥 Debug test window JavaScript executed!'); document.title = 'TEST WINDOW LOADED';");
@@ -311,7 +351,7 @@ fn debug_test_window(app_handle: tauri::AppHandle) -> Result<(), String> {
             }
         }
     });
-    
+
     println!("🚀 Debug test window creation initiated in separate thread");
     Ok(())
 }
@@ -335,10 +375,9 @@ fn show_index_window(app_handle: tauri::AppHandle) -> Result<(), String> {
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
-
         .plugin(tauri_plugin_autostart::init(
             MacosLauncher::LaunchAgent,
-            None
+            None,
         ))
         .invoke_handler(tauri::generate_handler![
             greet,

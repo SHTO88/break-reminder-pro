@@ -469,15 +469,29 @@
     
     function getBreakDuration() {
       try {
+        // First try to get from URL parameters
         const urlParams = new URLSearchParams(window.location.search);
         const duration = urlParams.get('duration');
-        if (duration) return parseInt(duration);
+        console.log('URL search params:', window.location.search);
+        console.log('Duration from URL:', duration);
         
+        if (duration && !isNaN(parseInt(duration))) {
+          const durationInt = parseInt(duration);
+          console.log('Using duration from URL:', durationInt);
+          return durationInt;
+        }
+        
+        // Fallback to localStorage
         const stored = localStorage.getItem('breakDuration');
-        if (stored) return parseInt(stored);
+        console.log('Duration from localStorage:', stored);
+        if (stored && !isNaN(parseInt(stored))) {
+          return parseInt(stored);
+        }
       } catch (error) {
         console.error('Error getting break duration:', error);
       }
+      
+      console.log('Using default duration: 300 seconds');
       return 300;
     }
     
@@ -516,8 +530,15 @@
     
     // Initialize
     function init() {
+      console.log('=== FORCE BREAK WINDOW INITIALIZATION ===');
+      console.log('Current URL:', window.location.href);
+      console.log('URL search:', window.location.search);
+      
       totalSeconds = getBreakDuration();
       currentSeconds = totalSeconds;
+      
+      console.log('Final break duration:', totalSeconds, 'seconds');
+      console.log('Formatted time:', formatTime(totalSeconds));
       
       initProgressCircle();
       updateCountdown();
@@ -526,6 +547,7 @@
       
       console.log(`Break timer initialized: ${totalSeconds} seconds`);
       console.log('Controls: F = toggle focus mode, ESC = toggle early return');
+      console.log('=== INITIALIZATION COMPLETE ===');
     }
     
     window.addEventListener('DOMContentLoaded', init);
