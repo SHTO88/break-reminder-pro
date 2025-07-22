@@ -358,8 +358,16 @@ async function handleBreakTime() {
       const inMeeting = await invoke("is_meeting_active");
       if (inMeeting) {
         console.log("Meeting detected, postponing break...");
-        document.getElementById('timer-status').textContent = 'Meeting detected - break postponed by 5 minutes';
-        startTimer(5 * 60);
+        document.getElementById('timer-status').textContent = 'Meeting detected - break postponed by 10 minutes';
+        
+        // Show meeting detected notification
+        try {
+          await invoke("meeting_detected_notification");
+        } catch (error) {
+          console.error("Failed to show meeting notification:", error);
+        }
+        
+        startTimer(10 * 60);
         return;
       }
     }

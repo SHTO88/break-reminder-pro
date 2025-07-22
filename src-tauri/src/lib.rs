@@ -595,6 +595,74 @@ async fn get_primary_monitor_size(app_handle: tauri::AppHandle) -> Result<(u32, 
 }
 
 #[tauri::command]
+fn meeting_detected_notification(app_handle: tauri::AppHandle) -> Result<(), String> {
+    println!("🤝 Creating meeting detected notification window...");
+
+    // Close existing window if it exists
+    if let Some(existing) = app_handle.get_webview_window("meeting_notification") {
+        println!("📄 Closing existing meeting notification window");
+        let _ = existing.close();
+    }
+
+    // Create window in separate thread as recommended by Tauri docs
+    let handle = app_handle.clone();
+    std::thread::spawn(move || {
+        println!("📂 Attempting to load: meeting_notification.html");
+
+        // Window dimensions - compact notification
+        let window_width = 320.0;
+        let window_height = 130.0;
+
+        // Calculate top-right position
+        let screen_width = 1920.0; // Will be adjusted by JavaScript for actual screen
+        let x = screen_width - window_width - 20.0; // 20px from right edge
+        let y = 60.0; // 60px from top
+
+        match WebviewWindowBuilder::new(
+            &handle,
+            "meeting_notification",
+            WebviewUrl::App("meeting_notification.html".into()),
+        )
+        .title("Meeting Detected")
+        .always_on_top(true)
+        .decorations(false)
+        .resizable(false)
+        .inner_size(window_width, window_height)
+        .position(x, y)
+        .focused(false) // Don't steal focus
+        .visible(true)
+        .skip_taskbar(true)
+        .transparent(true)
+        .shadow(true)
+        .build()
+        {
+            Ok(window) => {
+                println!("✅ Meeting notification window created successfully!");
+                println!("🎯 Window label: {}", window.label());
+                println!("📋 Expected content: Meeting detected notification");
+
+                // Auto-close after 4 seconds
+                let window_clone = window.clone();
+                std::thread::spawn(move || {
+                    std::thread::sleep(std::time::Duration::from_secs(4));
+                    let _ = window_clone.close();
+                });
+
+                // Try to inject some debugging JavaScript after a delay
+                std::thread::sleep(std::time::Duration::from_millis(500));
+                let _ = window.eval("console.log('🔥 Meeting notification window JavaScript executed!');");
+            }
+            Err(e) => {
+                println!("❌ Failed to create meeting notification window: {}", e);
+            }
+        }
+    });
+
+    println!("🚀 Meeting notification window creation initiated in separate thread");
+    Ok(())
+}
+
+#[tauri::command]
 fn skip_break(app_handle: tauri::AppHandle) -> Result<(), String> {
     println!("⏭️ Skip break requested");
 
@@ -652,6 +720,7 @@ pub fn run() {
             close_window,
             notify_window,
             pre_break_notification_window,
+            meeting_detected_notification,
             get_primary_monitor_size,
             skip_break,
             enable_autostart,

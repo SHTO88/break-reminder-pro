@@ -247,6 +247,16 @@ async function debugBrowserMeetingCheck() {
   }
 }
 
+async function debugMeetingNotification() {
+  try {
+    debugLog('Testing meeting detected notification...');
+    await invoke("meeting_detected_notification");
+    debugLog('✅ Meeting notification window created successfully');
+  } catch (error) {
+    debugLog(`❌ Error showing meeting notification: ${error}`);
+  }
+}
+
 async function debugAutostartCheck() {
   try {
     debugLog('Checking autostart status...');
@@ -407,6 +417,7 @@ window.addEventListener("DOMContentLoaded", async () => {
   document.getElementById('debug-media-pause').addEventListener('click', debugMediaPause);
   document.getElementById('debug-meeting-check').addEventListener('click', debugMeetingCheck);
   document.getElementById('debug-browser-meeting-check').addEventListener('click', debugBrowserMeetingCheck);
+  document.getElementById('debug-meeting-notification').addEventListener('click', debugMeetingNotification);
   document.getElementById('debug-autostart-check').addEventListener('click', debugAutostartCheck);
   document.getElementById('debug-clear-settings').addEventListener('click', debugClearSettings);
   
