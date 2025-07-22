@@ -336,6 +336,7 @@ dependencies = [
  "tauri-plugin-autostart",
  "tauri-plugin-opener",
  "tauri-plugin-store",
+ "winapi",
 ]
 
 [[package]]

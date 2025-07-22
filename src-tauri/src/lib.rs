@@ -324,6 +324,8 @@ fn play_chime() -> Result<(), String> {
 #[tauri::command]
 fn is_meeting_active() -> Result<bool, String> {
     use sysinfo::System;
+    
+    // Check for desktop meeting applications
     let meeting_processes = [
         "zoom.exe",
         "teams.exe",
@@ -331,12 +333,159 @@ fn is_meeting_active() -> Result<bool, String> {
         "webex.exe",
         "meet.exe",
     ];
+    
     let sys = System::new_all();
-    let found = sys.processes().values().any(|proc| {
+    let desktop_meeting_found = sys.processes().values().any(|proc| {
         let name = proc.name().to_lowercase();
         meeting_processes.iter().any(|mp| name.contains(mp))
     });
-    Ok(found)
+    
+    if desktop_meeting_found {
+        return Ok(true);
+    }
+    
+    // Check for browser-based meetings (Windows only)
+    #[cfg(target_os = "windows")]
+    {
+        if let Ok(browser_meeting_found) = check_browser_meetings() {
+            return Ok(browser_meeting_found);
+        }
+    }
+    
+    Ok(false)
+}
+
+#[cfg(target_os = "windows")]
+fn check_browser_meetings() -> Result<bool, String> {
+    use std::ffi::OsString;
+    use std::os::windows::ffi::OsStringExt;
+    use winapi::um::winuser::{EnumWindows, GetWindowTextW, IsWindowVisible};
+    use winapi::shared::windef::HWND;
+    use winapi::shared::minwindef::{BOOL, LPARAM, TRUE, FALSE};
+    
+    // Meeting indicators to look for in browser window titles
+    let meeting_indicators = [
+        "google meet",
+        "meet.google.com",
+        "zoom meeting",
+        "microsoft teams",
+        "teams.microsoft.com",
+        "webex meeting",
+        "webex.com",
+        "gotomeeting",
+        "join.me",
+        "bluejeans",
+        "whereby.com",
+        "discord",
+        "slack call",
+        "skype",
+        "hangouts",
+        "jitsi meet",
+        "bigbluebutton",
+        "8x8.vc",
+        "ringcentral meetings",
+        "cisco webex",
+        "amazon chime",
+        "facebook messenger rooms",
+        "whatsapp web",
+    ];
+    
+    // Browser process names to check
+    let browser_processes = [
+        "chrome.exe",
+        "firefox.exe",
+        "msedge.exe",
+        "opera.exe",
+        "brave.exe",
+        "vivaldi.exe",
+        "iexplore.exe",
+    ];
+    
+    // First check if any browsers are running
+    let sys = sysinfo::System::new_all();
+    let browser_running = sys.processes().values().any(|proc| {
+        let name = proc.name().to_lowercase();
+        browser_processes.iter().any(|bp| name.contains(bp))
+    });
+    
+    if !browser_running {
+        return Ok(false);
+    }
+    
+    // Structure to pass data to the callback
+    struct CallbackData {
+        meeting_indicators: Vec<String>,
+        found_meeting: bool,
+    }
+    
+    let mut callback_data = CallbackData {
+        meeting_indicators: meeting_indicators.iter().map(|s| s.to_lowercase()).collect(),
+        found_meeting: false,
+    };
+    
+    // Callback function for EnumWindows
+    unsafe extern "system" fn enum_windows_proc(hwnd: HWND, lparam: LPARAM) -> BOOL {
+        let callback_data = &mut *(lparam as *mut CallbackData);
+        
+        // Only check visible windows
+        if IsWindowVisible(hwnd) == 0 {
+            return TRUE;
+        }
+        
+        // Get window title
+        let mut title: [u16; 512] = [0; 512];
+        let title_len = GetWindowTextW(hwnd, title.as_mut_ptr(), title.len() as i32);
+        
+        if title_len > 0 {
+            let title_os_string = OsString::from_wide(&title[..title_len as usize]);
+            if let Ok(title_string) = title_os_string.into_string() {
+                let title_lower = title_string.to_lowercase();
+                
+                // Check if the window title contains any meeting indicators
+                for indicator in &callback_data.meeting_indicators {
+                    if title_lower.contains(indicator) {
+                        println!("🔍 Meeting detected in browser window: {}", title_string);
+                        callback_data.found_meeting = true;
+                        return FALSE; // Stop enumeration
+                    }
+                }
+            }
+        }
+        
+        TRUE // Continue enumeration
+    }
+    
+    // Enumerate all windows
+    unsafe {
+        EnumWindows(
+            Some(enum_windows_proc),
+            &mut callback_data as *mut CallbackData as LPARAM,
+        );
+    }
+    
+    Ok(callback_data.found_meeting)
+}
+
+#[tauri::command]
+fn check_browser_meeting_debug() -> Result<String, String> {
+    #[cfg(target_os = "windows")]
+    {
+        match check_browser_meetings() {
+            Ok(found) => {
+                if found {
+                    Ok("Browser meeting detected".to_string())
+                } else {
+                    Ok("No browser meeting detected".to_string())
+                }
+            }
+            Err(e) => Ok(format!("Error checking browser meetings: {}", e))
+        }
+    }
+    
+    #[cfg(not(target_os = "windows"))]
+    {
+        Ok("Browser meeting detection only supported on Windows".to_string())
+    }
 }
 
 #[tauri::command]
@@ -498,6 +647,7 @@ pub fn run() {
             control_media,
             play_chime,
             is_meeting_active,
+            check_browser_meeting_debug,
             force_break_window,
             close_window,
             notify_window,

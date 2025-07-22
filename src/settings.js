@@ -237,6 +237,16 @@ async function debugMeetingCheck() {
   }
 }
 
+async function debugBrowserMeetingCheck() {
+  try {
+    debugLog('Checking browser meeting status...');
+    const result = await invoke("check_browser_meeting_debug");
+    debugLog(`Browser meeting detection: ${result}`);
+  } catch (error) {
+    debugLog(`Error checking browser meeting status: ${error}`);
+  }
+}
+
 async function debugAutostartCheck() {
   try {
     debugLog('Checking autostart status...');
@@ -285,6 +295,7 @@ async function debugTestSequence() {
     
     debugLog('2. Testing system features...');
     await debugMeetingCheck();
+    await debugBrowserMeetingCheck();
     await debugAutostartCheck();
     await debugMediaPause();
     
@@ -319,7 +330,8 @@ function debugHelp() {
   debugLog('SYSTEM TESTS:');
   debugLog('  🔔 Play Chime - Tests break notification sound');
   debugLog('  ⏸️ Media Pause - Tests media control functionality');
-  debugLog('  👥 Meeting Check - Tests meeting detection');
+  debugLog('  👥 Meeting Check - Tests desktop meeting detection');
+  debugLog('  🌐 Browser Meeting - Tests browser meeting detection');
   debugLog('  🚀 Autostart - Tests Windows autostart status');
   debugLog('  🗑️ Clear Settings - Resets all settings to defaults');
   debugLog('');
@@ -394,6 +406,7 @@ window.addEventListener("DOMContentLoaded", async () => {
   document.getElementById('debug-play-chime').addEventListener('click', debugPlayChime);
   document.getElementById('debug-media-pause').addEventListener('click', debugMediaPause);
   document.getElementById('debug-meeting-check').addEventListener('click', debugMeetingCheck);
+  document.getElementById('debug-browser-meeting-check').addEventListener('click', debugBrowserMeetingCheck);
   document.getElementById('debug-autostart-check').addEventListener('click', debugAutostartCheck);
   document.getElementById('debug-clear-settings').addEventListener('click', debugClearSettings);
   
