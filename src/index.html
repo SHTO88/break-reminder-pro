@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -19,22 +20,22 @@
       --success: #10b981;
       --warning: #f59e0b;
       --danger: #ef4444;
-      
+
       --bg-primary: #0f172a;
       --bg-secondary: #1e293b;
       --bg-card: #334155;
       --bg-hover: #475569;
-      
+
       --text-primary: #f8fafc;
       --text-secondary: #cbd5e1;
       --text-muted: #94a3b8;
-      
+
       --border: #475569;
       --border-light: #64748b;
-      
+
       --shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
       --shadow-lg: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
-      
+
       --radius: 12px;
       --radius-lg: 16px;
     }
@@ -250,6 +251,7 @@
       color: var(--text-primary);
       font-weight: 500;
       font-size: 0.9rem;
+      text-align: center;
     }
 
     .time-inputs {
@@ -317,7 +319,8 @@
       background: var(--bg-hover);
     }
 
-    .radio-option input[type="radio"] {
+    .radio-option input[type="radio"],
+    .radio-option input[type="checkbox"] {
       display: none;
     }
 
@@ -331,13 +334,15 @@
       transition: all 0.2s ease;
     }
 
-    .radio-option input[type="radio"]:checked + .radio-custom {
+    .radio-option input[type="radio"]:checked+.radio-custom,
+    .radio-option input[type="checkbox"]:checked+.radio-custom {
       border-color: var(--primary);
       background: var(--primary);
       box-shadow: 0 0 10px rgba(99, 102, 241, 0.3);
     }
 
-    .radio-option input[type="radio"]:checked + .radio-custom::after {
+    .radio-option input[type="radio"]:checked+.radio-custom::after,
+    .radio-option input[type="checkbox"]:checked+.radio-custom::after {
       content: '';
       position: absolute;
       top: 50%;
@@ -427,7 +432,33 @@
       background: var(--bg-hover);
     }
 
-    .toggle-option input[type="checkbox"] {
+    /* Compact recurring section */
+    .recurring-section {
+      display: flex;
+      justify-content: center;
+      width: 100%;
+    }
+
+    .toggle-option-compact {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      padding: 0.4rem 1.2rem;
+      border-radius: var(--radius);
+      border: 1px solid var(--border);
+      cursor: pointer;
+      transition: all 0.2s ease;
+      background: var(--bg-secondary);
+      width: 100%;
+    }
+
+    .toggle-option-compact:hover {
+      border-color: var(--border-light);
+      background: var(--bg-hover);
+    }
+
+    .toggle-option input[type="checkbox"],
+    .toggle-option-compact input[type="checkbox"] {
       display: none;
     }
 
@@ -454,13 +485,15 @@
       transition: all 0.3s ease;
     }
 
-    .toggle-option input[type="checkbox"]:checked + .toggle-switch {
+    .toggle-option input[type="checkbox"]:checked+.toggle-switch,
+    .toggle-option-compact input[type="checkbox"]:checked+.toggle-switch {
       background: var(--primary);
       border-color: var(--primary);
       box-shadow: 0 0 10px rgba(99, 102, 241, 0.3);
     }
 
-    .toggle-option input[type="checkbox"]:checked + .toggle-switch::after {
+    .toggle-option input[type="checkbox"]:checked+.toggle-switch::after,
+    .toggle-option-compact input[type="checkbox"]:checked+.toggle-switch::after {
       left: 22px;
       background: white;
     }
@@ -472,7 +505,7 @@
 
     .toggle-title {
       font-weight: 600;
-      margin-bottom: 0.25rem;
+      margin-bottom: 0rem;
       font-size: 1rem;
     }
 
@@ -528,8 +561,15 @@
 
     /* Animations */
     @keyframes pulse {
-      0%, 100% { opacity: 1; }
-      50% { opacity: 0.7; }
+
+      0%,
+      100% {
+        opacity: 1;
+      }
+
+      50% {
+        opacity: 0.7;
+      }
     }
 
     .pulse {
@@ -541,30 +581,31 @@
       .container {
         padding: 0.75rem;
       }
-      
+
       .timer-hero {
         padding: 1.5rem 1rem;
       }
-      
+
       .timer-countdown {
         font-size: 2.5rem;
       }
-      
+
       .settings-row {
         grid-template-columns: 1fr;
         gap: 1rem;
       }
-      
+
       .radio-group-horizontal {
         flex-direction: column;
       }
-      
+
       .running-info {
         grid-template-columns: repeat(2, 1fr);
         gap: 0.75rem;
       }
-      
-      .timer-controls, .running-controls {
+
+      .timer-controls,
+      .running-controls {
         flex-direction: column;
         gap: 0.75rem;
       }
@@ -574,11 +615,11 @@
       .timer-countdown {
         font-size: 2rem;
       }
-      
+
       .time-inputs {
         justify-content: center;
       }
-      
+
       .running-info {
         grid-template-columns: 1fr;
       }
@@ -612,7 +653,7 @@
         <div class="timer-countdown" id="timer-countdown">--:--</div>
         <div class="timer-label" id="timer-label">Break Timer Running</div>
         <div class="timer-status" id="timer-status">Take a break when the timer reaches zero</div>
-        
+
         <div class="timer-controls">
           <button type="button" class="btn btn-secondary" id="pause-timer">
             <span>⏸️</span>
@@ -634,12 +675,14 @@
               <label class="form-label">Time until break:</label>
               <div class="time-inputs">
                 <div>
-                  <input type="number" id="break-minutes" class="time-input" min="0" max="180" value="50" placeholder="MM" />
+                  <input type="number" id="break-minutes" class="time-input" min="0" max="180" value="20"
+                    placeholder="MM" />
                   <div class="time-label">MIN</div>
                 </div>
                 <span class="time-separator">:</span>
                 <div>
-                  <input type="number" id="break-seconds" class="time-input" min="0" max="59" value="0" placeholder="SS" />
+                  <input type="number" id="break-seconds" class="time-input" min="0" max="59" value="0"
+                    placeholder="SS" />
                   <div class="time-label">SEC</div>
                 </div>
               </div>
@@ -649,12 +692,14 @@
               <label class="form-label">Break duration:</label>
               <div class="time-inputs">
                 <div>
-                  <input type="number" id="break-duration-minutes" class="time-input" min="0" max="60" value="10" placeholder="MM" />
+                  <input type="number" id="break-duration-minutes" class="time-input" min="0" max="60" value="10"
+                    placeholder="MM" />
                   <div class="time-label">MIN</div>
                 </div>
                 <span class="time-separator">:</span>
                 <div>
-                  <input type="number" id="break-duration-seconds" class="time-input" min="0" max="59" value="0" placeholder="SS" />
+                  <input type="number" id="break-duration-seconds" class="time-input" min="0" max="59" value="0"
+                    placeholder="SS" />
                   <div class="time-label">SEC</div>
                 </div>
               </div>
@@ -692,18 +737,22 @@
             </div>
           </div>
 
+          <!-- Recurring break cycle - compact toggle style -->
+          <div class="form-group">
+            <div class="toggle-group-horizontal">
+              <label class="toggle-option-compact">
+                <input type="checkbox" id="recurring" />
+                <span class="toggle-switch"></span>
+                <div class="toggle-content">
+                  <div class="toggle-title">Recurring Break Cycle</div>
+                  <div class="toggle-desc">Continue breaks automatically</div>
+                </div>
+              </label>
+            </div>
+          </div>
+
           <!-- Actions -->
           <div class="settings-actions">
-            <!-- Recurring toggle -->
-            <label class="toggle-option">
-              <input type="checkbox" id="recurring" />
-              <span class="toggle-switch"></span>
-              <div class="toggle-content">
-                <div class="toggle-title">Recurring Break Cycle</div>
-                <div class="toggle-desc">Continue breaks automatically</div>
-              </div>
-            </label>
-            
             <!-- Start button -->
             <button type="button" class="btn btn-primary" id="start-timer">
               <span>▶️</span>
@@ -739,7 +788,10 @@
           </div>
         </div>
       </div>
+
+
     </main>
   </div>
 </body>
+
 </html>

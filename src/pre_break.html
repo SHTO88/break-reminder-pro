@@ -5,42 +5,116 @@
     <title>Pre-Break Notification</title>
     <style>
       body {
-        background: #fffbe6;
-        color: #222;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        height: 100vh;
+        background: transparent;
         margin: 0;
+        padding: 4px;
         font-family: Inter, Arial, sans-serif;
+        overflow: hidden;
+        user-select: none;
+        -webkit-app-region: drag;
+        width: 100%;
+        height: 100%;
+        box-sizing: border-box;
       }
       .pre-break {
         background: #ffe21c;
         color: #222;
-        padding: 1.5rem 2.5rem;
-        border-radius: 14px;
-        font-size: 1.5rem;
+        padding: 8px 12px;
+        border-radius: 6px;
+        font-size: 11px;
         font-weight: 600;
-        box-shadow: 0 2px 12px rgba(255, 226, 28, 0.12);
+        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+        border: 1px solid rgba(0, 0, 0, 0.1);
+        width: calc(100% - 8px);
+        max-width: 200px;
+        position: relative;
+        box-sizing: border-box;
+      }
+      .app-name {
+        font-size: 9px;
+        font-weight: 500;
+        opacity: 0.7;
+        text-align: center;
+        margin-bottom: 4px;
+        white-space: nowrap;
+      }
+      .main-content {
+        display: grid;
+        grid-template-columns: 1fr auto;
+        align-items: center;
+        gap: 12px;
+      }
+      .break-info {
+        text-align: center;
       }
       .countdown {
-        font-size: 2rem;
+        font-size: 16px;
         font-weight: 700;
-        margin-top: 0.5rem;
+        margin-top: 2px;
+      }
+      .skip-btn {
+        background: rgba(0, 0, 0, 0.15);
+        border: none;
+        color: #222;
+        padding: 4px 8px;
+        border-radius: 4px;
+        cursor: pointer;
+        font-size: 9px;
+        font-weight: 600;
+        -webkit-app-region: no-drag;
+        transition: background 0.2s;
+        white-space: nowrap;
+        min-width: 60px;
+      }
+      .skip-btn:hover {
+        background: rgba(0, 0, 0, 0.25);
+      }
+      .fade-out {
+        opacity: 0;
+        transition: opacity 0.5s ease-out;
+      }
+      .progress-bar {
+        position: absolute;
+        bottom: 0;
+        left: 0;
+        height: 100%;
+        background: rgba(0, 0, 0, 0.2);
+        border-radius: 0 0 6px 6px;
+        width: 0%;
+        transition: width 0.1s linear;
+        opacity: 0;
+      }
+      .progress-bar.visible {
+        opacity: 1;
+      }
+      .progress-bar.paused {
+        background: rgba(255, 165, 0, 0.6);
       }
     </style>
   </head>
   <body>
-    <div class="pre-break">
-      <div>Break in:</div>
-      <div class="countdown" id="pre-break-countdown">--:--</div>
-      <button onclick="closeWindow()" style="position: absolute; top: 10px; right: 10px; background: rgba(0,0,0,0.3); border: none; color: #222; padding: 5px 10px; border-radius: 4px; cursor: pointer;">
-        ✕ Close
-      </button>
+    <div class="pre-break" id="pre-break-container">
+      <div class="app-name">Break Reminder Pro</div>
+      <div class="main-content">
+        <div class="break-info">
+          <div>Break in:</div>
+          <div class="countdown" id="pre-break-countdown">--:--</div>
+        </div>
+        <button class="skip-btn" onclick="skipBreak()">Skip Break</button>
+      </div>
+      <div class="progress-bar" id="auto-hide-progress"></div>
     </div>
     <script>
       console.log('Pre-break window HTML loaded successfully!');
       document.title = 'Pre-Break Warning - LOADED';
+      
+      let autoHideTimer = null;
+      let progressTimer = null;
+      let isDragging = false;
+      let dragOffset = { x: 0, y: 0 };
+      let autoHideStartTime = null;
+      let autoHideDuration = 3000; // 3 seconds
+      let isAutoHidePaused = false;
       
       // Close window function
       async function closeWindow() {
@@ -49,7 +123,6 @@
           await invoke('close_window', { label: 'pre_break' });
         } catch (error) {
           console.error('Error closing window:', error);
-          // Fallback: try to close the current window directly
           try {
             const { getCurrentWindow } = window.__TAURI__.window;
             await getCurrentWindow().close();
@@ -59,14 +132,228 @@
         }
       }
       
-      // Also allow Escape key to close
+      // Skip break function
+      async function skipBreak() {
+        try {
+          const { invoke } = window.__TAURI__.core;
+          await invoke('skip_break');
+          await closeWindow();
+        } catch (error) {
+          console.error('Error skipping break:', error);
+          // Just close the window if skip command fails
+          await closeWindow();
+        }
+      }
+      
+      // Position management
+      async function savePosition() {
+        try {
+          const { getCurrentWindow } = window.__TAURI__.window;
+          const window = getCurrentWindow();
+          const position = await window.outerPosition();
+          localStorage.setItem('preBreakPosition', JSON.stringify(position));
+        } catch (error) {
+          console.error('Error saving position:', error);
+        }
+      }
+      
+      async function loadPosition() {
+        try {
+          const savedPosition = localStorage.getItem('preBreakPosition');
+          if (savedPosition) {
+            const position = JSON.parse(savedPosition);
+            const { getCurrentWindow } = window.__TAURI__.window;
+            const window = getCurrentWindow();
+            await window.setPosition(position);
+          } else {
+            // Default to bottom center
+            await setDefaultPosition();
+          }
+        } catch (error) {
+          console.error('Error loading position:', error);
+          await setDefaultPosition();
+        }
+      }
+      
+      async function setDefaultPosition() {
+        try {
+          const { getCurrentWindow } = window.__TAURI__.window;
+          const { invoke } = window.__TAURI__.core;
+          const window = getCurrentWindow();
+          
+          // Wait a bit for window to be fully initialized
+          await new Promise(resolve => setTimeout(resolve, 100));
+          
+          const size = await window.outerSize();
+          
+          // Get actual screen dimensions from Tauri
+          let screenWidth, screenHeight;
+          try {
+            const [width, height] = await invoke('get_primary_monitor_size');
+            screenWidth = width;
+            screenHeight = height;
+          } catch (error) {
+            console.warn('Failed to get monitor size from Tauri, using screen API:', error);
+            screenWidth = screen.width;
+            screenHeight = screen.height;
+          }
+          
+          console.log(`Screen dimensions: ${screenWidth}x${screenHeight}`);
+          console.log(`Window size: ${size.width}x${size.height}`);
+          
+          // Position at bottom center with proper margins
+          const x = Math.floor((screenWidth - size.width) / 2);
+          const y = screenHeight - size.height - 120; // 120px from bottom for better visibility
+          
+          console.log(`Positioning window at: (${x}, ${y})`);
+          await window.setPosition({ x, y });
+          
+          // Ensure window is visible and focused properly
+          await window.show();
+          await window.setAlwaysOnTop(true);
+          
+        } catch (error) {
+          console.error('Error setting default position:', error);
+        }
+      }
+      
+      // Dragging functionality
+      function initDragging() {
+        const container = document.getElementById('pre-break-container');
+        
+        container.addEventListener('mousedown', (e) => {
+          if (e.target.classList.contains('skip-btn')) return;
+          isDragging = true;
+          dragOffset.x = e.clientX;
+          dragOffset.y = e.clientY;
+          container.style.cursor = 'grabbing';
+          
+          // Cancel auto-hide when starting to drag
+          cancelAutoHide();
+        });
+        
+        document.addEventListener('mousemove', async (e) => {
+          if (!isDragging) return;
+          
+          const deltaX = e.clientX - dragOffset.x;
+          const deltaY = e.clientY - dragOffset.y;
+          
+          try {
+            const { getCurrentWindow } = window.__TAURI__.window;
+            const window = getCurrentWindow();
+            const currentPos = await window.outerPosition();
+            await window.setPosition({
+              x: currentPos.x + deltaX,
+              y: currentPos.y + deltaY
+            });
+          } catch (error) {
+            console.error('Error during drag:', error);
+          }
+          
+          dragOffset.x = e.clientX;
+          dragOffset.y = e.clientY;
+        });
+        
+        document.addEventListener('mouseup', () => {
+          if (isDragging) {
+            isDragging = false;
+            container.style.cursor = 'grab';
+            savePosition();
+            
+            // Re-enable auto-hide after drag is complete
+            setTimeout(() => {
+              startAutoHide();
+            }, 500); // Small delay before restarting auto-hide
+          }
+        });
+        
+        container.style.cursor = 'grab';
+      }
+      
+      // Auto-hide functionality with progress indicator
+      function startAutoHide() {
+        if (autoHideTimer) clearTimeout(autoHideTimer);
+        if (progressTimer) clearInterval(progressTimer);
+        
+        const progressBar = document.getElementById('auto-hide-progress');
+        progressBar.classList.add('visible');
+        progressBar.classList.remove('paused');
+        
+        autoHideStartTime = Date.now();
+        isAutoHidePaused = false;
+        
+        // Update progress bar
+        progressTimer = setInterval(() => {
+          if (isAutoHidePaused) return;
+          
+          const elapsed = Date.now() - autoHideStartTime;
+          const progress = Math.min((elapsed / autoHideDuration) * 100, 100);
+          progressBar.style.width = progress + '%';
+          
+          if (progress >= 100) {
+            clearInterval(progressTimer);
+          }
+        }, 50); // Update every 50ms for smooth animation
+        
+        // Set the main auto-hide timer
+        autoHideTimer = setTimeout(() => {
+          const container = document.getElementById('pre-break-container');
+          container.classList.add('fade-out');
+          
+          setTimeout(() => {
+            closeWindow();
+          }, 500); // Wait for fade animation
+        }, autoHideDuration);
+      }
+      
+      // Cancel auto-hide on interaction
+      function cancelAutoHide() {
+        if (autoHideTimer) {
+          clearTimeout(autoHideTimer);
+          autoHideTimer = null;
+        }
+        if (progressTimer) {
+          clearInterval(progressTimer);
+          progressTimer = null;
+        }
+        
+        const progressBar = document.getElementById('auto-hide-progress');
+        progressBar.classList.remove('visible');
+        progressBar.style.width = '0%';
+        isAutoHidePaused = true;
+      }
+      
+      // Pause auto-hide (for hover)
+      function pauseAutoHide() {
+        isAutoHidePaused = true;
+        const progressBar = document.getElementById('auto-hide-progress');
+        progressBar.classList.add('paused');
+      }
+      
+      // Resume auto-hide (after hover ends)
+      function resumeAutoHide() {
+        if (autoHideTimer && !isDragging) {
+          isAutoHidePaused = false;
+          const progressBar = document.getElementById('auto-hide-progress');
+          progressBar.classList.remove('paused');
+          autoHideStartTime = Date.now() - (parseFloat(progressBar.style.width) / 100 * autoHideDuration);
+        }
+      }
+      
+      // Keyboard shortcuts
       document.addEventListener('keydown', (e) => {
         if (e.key === 'Escape') {
           closeWindow();
+        } else if (e.key === 's' || e.key === 'S') {
+          skipBreak();
         }
       });
       
-      let seconds = 300; // 5 min default //TODO: make this dynamic
+      // Mouse interaction to pause/resume auto-hide
+      document.addEventListener('mouseenter', pauseAutoHide);
+      document.addEventListener('mouseleave', resumeAutoHide);
+      
+      let seconds = 30; // Default 30 seconds
       function updateCountdown() {
         const min = Math.floor(seconds / 60)
           .toString()
@@ -74,19 +361,37 @@
         const sec = (seconds % 60).toString().padStart(2, "0");
         const countdownEl = document.getElementById("pre-break-countdown");
         if (countdownEl) {
-          countdownEl.textContent = `${min}:${sec}`;
+          if (seconds >= 60) {
+            countdownEl.textContent = `${min}:${sec}`;
+          } else {
+            countdownEl.textContent = `${seconds}s`;
+          }
         }
       }
       
-      // Add error handling
+      // Initialize everything
       try {
         updateCountdown();
         const interval = setInterval(() => {
           seconds--;
           updateCountdown();
-          if (seconds <= 0) clearInterval(interval);
+          if (seconds <= 0) {
+            clearInterval(interval);
+            closeWindow();
+          }
         }, 1000);
-        console.log('Pre-break countdown started successfully');
+        
+        // Initialize positioning immediately, then other features
+        loadPosition();
+        
+        // Initialize other features with small delay
+        setTimeout(() => {
+          initDragging();
+          startAutoHide();
+        }, 200);
+        
+        console.log('Pre-break window initialized successfully');
+        console.log('Window dimensions should support: App name + Break info + Skip Break button');
       } catch (error) {
         console.error('Error in pre-break window:', error);
         document.body.innerHTML = `<div style="color: red; padding: 20px;">Error: ${error.message}</div>`;

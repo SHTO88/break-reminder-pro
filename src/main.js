@@ -10,10 +10,10 @@ let pausedTime = 0;
 
 // Default settings
 const defaultSettings = {
-  break_minutes: 50,
+  break_minutes: 20,
   break_seconds: 0,
-  break_duration_minutes: 10,
-  break_duration_seconds: 0,
+  break_duration_minutes: 0,
+  break_duration_seconds: 20,
   break_mode: 'force',
   auto_pause: false,
   meeting_detect: false,
@@ -541,6 +541,8 @@ window.addEventListener("DOMContentLoaded", async () => {
       }
     });
   }
+
+
 
   console.log('Break Reminder Pro main page loaded successfully!');
 });

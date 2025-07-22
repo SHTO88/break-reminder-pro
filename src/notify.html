@@ -4,89 +4,356 @@
     <meta charset="UTF-8" />
     <title>Break Notification</title>
     <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      :root {
+        --primary: #6366f1;
+        --primary-dark: #4f46e5;
+        --success: #10b981;
+        --warning: #f59e0b;
+        --bg-primary: #0f172a;
+        --bg-secondary: #1e293b;
+        --bg-card: #334155;
+        --text-primary: #f8fafc;
+        --text-secondary: #cbd5e1;
+        --text-muted: #94a3b8;
+        --border: #475569;
+        --shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.25);
+        --radius: 16px;
+      }
+
       body {
-        background: #fff;
-        color: #222;
+        background: rgba(15, 23, 42, 0.95);
+        backdrop-filter: blur(10px);
+        color: var(--text-primary);
         display: flex;
         align-items: center;
         justify-content: center;
         height: 100vh;
         margin: 0;
-        font-family: Inter, Arial, sans-serif;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        overflow: hidden;
       }
-      .notify {
-        background: #24c8db;
-        color: #fff;
-        padding: 2rem 3rem;
-        border-radius: 16px;
-        font-size: 2rem;
-        font-weight: 600;
-        box-shadow: 0 2px 16px rgba(36, 200, 219, 0.15);
+
+      .notify-container {
+        background: linear-gradient(135deg, var(--bg-card) 0%, var(--bg-secondary) 100%);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        padding: 2rem;
+        box-shadow: var(--shadow);
+        text-align: center;
+        min-width: 320px;
+        max-width: 450px;
+        width: 100%;
+        position: relative;
+        animation: slideIn 0.3s ease-out;
       }
+
+      .drag-handle {
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        height: 40px;
+        cursor: move;
+        background: transparent;
+        border-radius: var(--radius) var(--radius) 0 0;
+        z-index: 10;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+
+      .drag-handle:hover {
+        background: rgba(255, 255, 255, 0.05);
+      }
+
+      .drag-indicator {
+        width: 40px;
+        height: 4px;
+        background: var(--text-muted);
+        border-radius: 2px;
+        opacity: 0.5;
+        transition: opacity 0.2s ease;
+      }
+
+      .drag-handle:hover .drag-indicator {
+        opacity: 0.8;
+      }
+
+      @keyframes slideIn {
+        from {
+          opacity: 0;
+          transform: translateY(-20px) scale(0.95);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0) scale(1);
+        }
+      }
+
+      .notify-icon {
+        font-size: 3rem;
+        margin-bottom: 1rem;
+        display: block;
+        animation: pulse 2s infinite;
+      }
+
+      @keyframes pulse {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0.7; }
+      }
+
+      .notify-title {
+        font-size: 1.5rem;
+        font-weight: 700;
+        color: var(--text-primary);
+        margin-bottom: 0.5rem;
+        line-height: 1.2;
+      }
+
+      .notify-subtitle {
+        font-size: 1rem;
+        color: var(--text-secondary);
+        margin-bottom: 1.5rem;
+        line-height: 1.4;
+      }
+
+      .countdown-container {
+        background: var(--bg-primary);
+        border-radius: calc(var(--radius) - 4px);
+        padding: 1rem;
+        margin-bottom: 1.5rem;
+        border: 1px solid var(--border);
+      }
+
+      .countdown-label {
+        font-size: 0.8rem;
+        color: var(--text-muted);
+        text-transform: uppercase;
+        letter-spacing: 0.1em;
+        margin-bottom: 0.5rem;
+        font-weight: 500;
+      }
+
       .countdown {
         font-size: 2.5rem;
-        font-weight: 700;
-        margin-top: 1rem;
+        font-weight: 300;
+        color: var(--primary);
+        font-family: 'SF Mono', 'Monaco', 'Cascadia Code', monospace;
+        text-shadow: 0 0 20px rgba(99, 102, 241, 0.3);
+        line-height: 1;
+      }
+
+      .notify-actions {
+        display: flex;
+        gap: 0.75rem;
+        justify-content: center;
+      }
+
+      .btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0.5rem;
+        padding: 0.75rem 1.5rem;
+        border: none;
+        border-radius: calc(var(--radius) - 4px);
+        font-weight: 600;
+        font-size: 0.9rem;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        text-decoration: none;
+      }
+
+      .btn-primary {
+        background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+        color: white;
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+      }
+
+      .btn-primary:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 8px 15px -3px rgba(0, 0, 0, 0.2);
+      }
+
+      .btn-secondary {
+        background: var(--bg-secondary);
+        color: var(--text-secondary);
+        border: 1px solid var(--border);
+      }
+
+      .btn-secondary:hover {
+        background: var(--bg-primary);
+        color: var(--text-primary);
+        border-color: var(--text-muted);
+      }
+
+      .close-btn {
+        position: absolute;
+        top: 1rem;
+        right: 1rem;
+        background: rgba(255, 255, 255, 0.1);
+        border: none;
+        color: var(--text-muted);
+        width: 32px;
+        height: 32px;
+        border-radius: 50%;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.2rem;
+        transition: all 0.2s ease;
+      }
+
+      .close-btn:hover {
+        background: rgba(255, 255, 255, 0.2);
+        color: var(--text-primary);
+        transform: scale(1.1);
+      }
+
+      /* Responsive */
+      @media (max-width: 480px) {
+        .notify-container {
+          margin: 0.5rem;
+          padding: 1.5rem;
+          min-width: auto;
+          max-width: none;
+        }
+
+        .notify-title {
+          font-size: 1.25rem;
+        }
+
+        .countdown {
+          font-size: 2rem;
+        }
+
+        .notify-actions {
+          flex-direction: column;
+        }
+
+        .btn {
+          padding: 0.6rem 1.2rem;
+          font-size: 0.85rem;
+        }
+      }
+
+      /* Ensure window fits content */
+      body {
+        min-height: 320px;
+        padding: 0.5rem;
       }
     </style>
   </head>
   <body>
-    <div class="notify">
-      <div>Break starting soon!</div>
-      <div class="countdown" id="notify-countdown">--:--</div>
-      <button onclick="closeWindow()" style="position: absolute; top: 10px; right: 10px; background: rgba(255,255,255,0.3); border: none; color: white; padding: 5px 10px; border-radius: 4px; cursor: pointer;">
-        ✕ Close
+    <div class="notify-container" id="notify-container">
+      <div class="drag-handle" id="drag-handle" title="Drag to move window">
+        <div class="drag-indicator"></div>
+      </div>
+      
+      <button class="close-btn" onclick="closeWindow()" title="Close notification">
+        ✕
       </button>
+      
+      <div class="notify-icon">⏰</div>
+      
+      <div class="notify-title">Break Time!</div>
+      <div class="notify-subtitle">Your break timer has finished. Take a moment to rest your eyes and stretch.</div>
+      
+      <div class="countdown-container">
+        <div class="countdown-label">Break ends in</div>
+        <div class="countdown" id="notify-countdown">--:--</div>
+      </div>
+      
+      <div class="notify-actions">
+        <button class="btn btn-primary" onclick="closeWindow()">
+          <span>✓</span>
+          Got it
+        </button>
+      </div>
     </div>
     <script>
-      console.log('🔥 Notify window HTML loaded successfully!');
-      document.title = 'Break Notification - LOADED';
+      console.log('🔥 Break notification window loaded successfully!');
+      document.title = 'Break Time - Break Reminder Pro';
       
-      // Force visible feedback immediately
-      document.body.style.border = '5px solid red';
-      console.log('🔥 Red border added for visibility test');
-      
-      // Check if this is being used as a test window
-      const isTestWindow = window.location.search.includes('test') || 
-                          (window.__TAURI__ && window.__TAURI__.window && 
-                           window.__TAURI__.window.getCurrentWindow().label === 'debug_test');
-      
-      // Wait for DOM to be fully ready
-      setTimeout(() => {
-        if (isTestWindow) {
-          console.log('🧪 Test mode detected, applying styling...');
-          document.title = 'Debug Test Window - LOADED';
-          const notifyDiv = document.querySelector('.notify');
-          const textDiv = document.querySelector('.notify div:first-child');
+      // Get break duration from URL parameters
+      function getBreakDuration() {
+        try {
+          const urlParams = new URLSearchParams(window.location.search);
+          const duration = urlParams.get('duration');
+          console.log('=== BREAK NOTIFICATION DURATION ===');
+          console.log('Current URL:', window.location.href);
+          console.log('Duration from URL:', duration);
           
-          if (notifyDiv && textDiv) {
-            textDiv.textContent = '🧪 Test Window Working!';
-            notifyDiv.style.background = '#8b5cf6';
-            console.log('✅ Running in test mode - styling applied');
-          } else {
-            console.error('❌ Could not find required elements for test styling');
-            // Fallback: replace entire body content
-            document.body.innerHTML = `
-              <div style="background: #8b5cf6; color: white; padding: 20px; text-align: center; font-family: Arial; height: 100vh; display: flex; align-items: center; justify-content: center; flex-direction: column;">
-                <h1>🧪 Test Window Working!</h1>
-                <p>Debug test window is functional</p>
-                <button onclick="closeWindow()" style="margin-top: 20px; padding: 10px 20px; background: rgba(255,255,255,0.3); border: none; color: white; border-radius: 4px; cursor: pointer;">✕ Close</button>
-              </div>
-            `;
+          if (duration && !isNaN(parseInt(duration))) {
+            const durationInt = parseInt(duration);
+            console.log('Using break duration:', durationInt, 'seconds');
+            return durationInt;
+          }
+        } catch (error) {
+          console.error('Error parsing break duration:', error);
+        }
+        
+        console.log('Using default break duration: 600 seconds (10 minutes)');
+        return 600;
+      }
+      
+      let breakTimeRemaining = getBreakDuration();
+      let countdownInterval = null;
+      
+      function updateCountdown() {
+        const min = Math.floor(breakTimeRemaining / 60).toString().padStart(2, "0");
+        const sec = (breakTimeRemaining % 60).toString().padStart(2, "0");
+        const countdownEl = document.getElementById("notify-countdown");
+        
+        if (countdownEl) {
+          countdownEl.textContent = `${min}:${sec}`;
+          
+          // Add visual feedback when time is running low
+          if (breakTimeRemaining <= 60) {
+            countdownEl.style.color = '#f59e0b'; // Warning color
+            countdownEl.style.animation = 'pulse 1s infinite';
+          } else if (breakTimeRemaining <= 30) {
+            countdownEl.style.color = '#ef4444'; // Danger color
           }
         }
-      }, 100);
+      }
+      
+      function startCountdown() {
+        updateCountdown();
+        countdownInterval = setInterval(() => {
+          breakTimeRemaining--;
+          updateCountdown();
+          
+          if (breakTimeRemaining <= 0) {
+            clearInterval(countdownInterval);
+            console.log('Break time finished, closing notification');
+            closeWindow();
+          }
+        }, 1000);
+        
+        console.log('Break countdown started:', breakTimeRemaining, 'seconds remaining');
+      }
       
       // Close window function
       async function closeWindow() {
         try {
+          if (countdownInterval) {
+            clearInterval(countdownInterval);
+          }
+          
           const { invoke } = window.__TAURI__.core;
-          // Try to get the current window label from URL or use default
-          const windowLabel = window.location.search.includes('debug') ? 'debug_test' : 'notify';
-          await invoke('close_window', { label: windowLabel });
+          await invoke('close_window', { label: 'notify' });
+          console.log('Break notification window closed');
         } catch (error) {
-          console.error('Error closing window:', error);
-          // Fallback: try to close the current window directly
+          console.error('Error closing notification window:', error);
+          // Fallback: try to close directly
           try {
             const { getCurrentWindow } = window.__TAURI__.window;
             await getCurrentWindow().close();
@@ -96,74 +363,95 @@
         }
       }
       
-      // Also allow Escape key to close
+
+      
+      // Keyboard shortcuts
       document.addEventListener('keydown', (e) => {
-        if (e.key === 'Escape') {
-          closeWindow();
+        switch(e.key) {
+          case 'Escape':
+          case 'Enter':
+          case ' ':
+            e.preventDefault();
+            closeWindow();
+            break;
         }
       });
       
-      // Get break duration from URL parameters
-      function getBreakDuration() {
+      // Auto-focus for keyboard interaction
+      document.addEventListener('DOMContentLoaded', () => {
+        document.body.focus();
+      });
+
+      // Drag functionality
+      let isDragging = false;
+      let dragOffset = { x: 0, y: 0 };
+
+      async function initializeDragFunctionality() {
         try {
-          // First try to get from URL parameters
-          const urlParams = new URLSearchParams(window.location.search);
-          const duration = urlParams.get('duration');
-          console.log('=== NOTIFY WINDOW DURATION PARSING ===');
-          console.log('Current URL:', window.location.href);
-          console.log('URL search params:', window.location.search);
-          console.log('Duration from URL:', duration);
-          
-          if (duration && !isNaN(parseInt(duration))) {
-            const durationInt = parseInt(duration);
-            console.log('Using duration from URL:', durationInt);
-            return durationInt;
+          const { getCurrentWindow } = window.__TAURI__.window;
+          const currentWindow = getCurrentWindow();
+          const dragHandle = document.getElementById('drag-handle');
+
+          if (!dragHandle) return;
+
+          dragHandle.addEventListener('mousedown', async (e) => {
+            isDragging = true;
+            const windowPosition = await currentWindow.outerPosition();
+            dragOffset.x = e.clientX;
+            dragOffset.y = e.clientY;
+            
+            document.addEventListener('mousemove', handleMouseMove);
+            document.addEventListener('mouseup', handleMouseUp);
+            
+            // Prevent text selection during drag
+            e.preventDefault();
+            document.body.style.userSelect = 'none';
+          });
+
+          async function handleMouseMove(e) {
+            if (!isDragging) return;
+
+            const deltaX = e.clientX - dragOffset.x;
+            const deltaY = e.clientY - dragOffset.y;
+
+            try {
+              const currentPos = await currentWindow.outerPosition();
+              await currentWindow.setPosition({
+                x: currentPos.x + deltaX,
+                y: currentPos.y + deltaY
+              });
+            } catch (error) {
+              console.error('Error moving window:', error);
+            }
           }
-          
-          // Fallback to localStorage
-          const stored = localStorage.getItem('breakDuration');
-          console.log('Duration from localStorage:', stored);
-          if (stored && !isNaN(parseInt(stored))) {
-            return parseInt(stored);
+
+          function handleMouseUp() {
+            isDragging = false;
+            document.removeEventListener('mousemove', handleMouseMove);
+            document.removeEventListener('mouseup', handleMouseUp);
+            document.body.style.userSelect = '';
           }
+
+          console.log('Drag functionality initialized');
         } catch (error) {
-          console.error('Error getting break duration:', error);
-        }
-        
-        console.log('Using default duration: 600 seconds');
-        return 600; // 10 minutes default
-      }
-      
-      let seconds = getBreakDuration();
-      console.log('Final notify duration:', seconds, 'seconds');
-      
-      function updateCountdown() {
-        const min = Math.floor(seconds / 60)
-          .toString()
-          .padStart(2, "0");
-        const sec = (seconds % 60).toString().padStart(2, "0");
-        const countdownEl = document.getElementById("notify-countdown");
-        if (countdownEl) {
-          countdownEl.textContent = `${min}:${sec}`;
+          console.error('Error initializing drag functionality:', error);
         }
       }
       
-      // Add error handling
+      // Initialize countdown when page loads
       try {
-        updateCountdown();
-        const interval = setInterval(() => {
-          seconds--;
-          updateCountdown();
-          if (seconds <= 0) {
-            clearInterval(interval);
-            console.log('Notify countdown finished, closing window');
-            closeWindow();
-          }
-        }, 1000);
-        console.log('Notify countdown started successfully with', seconds, 'seconds');
+        startCountdown();
+        initializeDragFunctionality();
+        console.log('Break notification initialized successfully');
       } catch (error) {
-        console.error('Error in notify window:', error);
-        document.body.innerHTML = `<div style="color: red; padding: 20px;">Error: ${error.message}</div>`;
+        console.error('Error initializing break notification:', error);
+        document.body.innerHTML = `
+          <div style="color: #ef4444; padding: 2rem; text-align: center; font-family: Arial;">
+            <h2>Error Loading Break Notification</h2>
+            <p>${error.message}</p>
+            <button onclick="closeWindow()" style="margin-top: 1rem; padding: 0.5rem 1rem; background: #6366f1; color: white; border: none; border-radius: 4px; cursor: pointer;">Close</button>
+          </div>
+        `;
       }
     </script>
   </body>

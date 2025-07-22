@@ -2,10 +2,10 @@ const { invoke } = window.__TAURI__.core;
 
 // Default settings
 const defaultSettings = {
-  break_minutes: 50,
+  break_minutes: 20,
   break_seconds: 0,
-  break_duration_minutes: 10,
-  break_duration_seconds: 0,
+  break_duration_minutes: 0,
+  break_duration_seconds: 20,
   break_mode: 'force',
   auto_pause: false,
   meeting_detect: false,
@@ -207,6 +207,16 @@ async function debugLockScreen() {
   }
 }
 
+async function debugPlayChime() {
+  try {
+    debugLog('Testing chime sound...');
+    await invoke("play_chime");
+    debugLog('✅ Chime played successfully');
+  } catch (error) {
+    debugLog(`❌ Error playing chime: ${error}`);
+  }
+}
+
 async function debugMediaPause() {
   try {
     debugLog('Testing media pause...');
@@ -307,6 +317,7 @@ function debugHelp() {
   debugLog('  ⏱️ Timer functions - Available on main timer page');
   debugLog('');
   debugLog('SYSTEM TESTS:');
+  debugLog('  🔔 Play Chime - Tests break notification sound');
   debugLog('  ⏸️ Media Pause - Tests media control functionality');
   debugLog('  👥 Meeting Check - Tests meeting detection');
   debugLog('  🚀 Autostart - Tests Windows autostart status');
@@ -380,6 +391,7 @@ window.addEventListener("DOMContentLoaded", async () => {
   document.getElementById('debug-timer-60s').addEventListener('click', () => setQuickTimer(60));
   document.getElementById('debug-timer-5m').addEventListener('click', () => setQuickTimer(300));
   
+  document.getElementById('debug-play-chime').addEventListener('click', debugPlayChime);
   document.getElementById('debug-media-pause').addEventListener('click', debugMediaPause);
   document.getElementById('debug-meeting-check').addEventListener('click', debugMeetingCheck);
   document.getElementById('debug-autostart-check').addEventListener('click', debugAutostartCheck);

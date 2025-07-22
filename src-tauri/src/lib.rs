@@ -59,7 +59,7 @@ fn force_break_window(app_handle: tauri::AppHandle, duration: Option<u32>) -> Re
                 println!("✅ Force break window created successfully!");
                 println!("🎯 Window label: {}", window.label());
                 println!("📋 Expected content: Fullscreen break window with countdown");
-                
+
                 // Try to inject debugging JavaScript after a delay
                 std::thread::sleep(std::time::Duration::from_millis(1000));
                 let debug_js = format!(
@@ -92,8 +92,11 @@ fn close_window(app_handle: tauri::AppHandle, label: String) -> Result<(), Strin
 fn notify_window(app_handle: tauri::AppHandle, duration: Option<u32>) -> Result<(), String> {
     let break_duration = duration.unwrap_or(600); // Default 10 minutes
     let url = format!("notify.html?duration={}", break_duration);
-    
-    println!("🔔 Creating notify window with duration: {} seconds", break_duration);
+
+    println!(
+        "🔔 Creating notify window with duration: {} seconds",
+        break_duration
+    );
     println!("🔗 URL being loaded: {}", url);
 
     // Close existing window if it exists
@@ -111,10 +114,12 @@ fn notify_window(app_handle: tauri::AppHandle, duration: Option<u32>) -> Result<
             .always_on_top(true)
             .decorations(false)
             .resizable(false)
-            .inner_size(400.0, 200.0)
+            .inner_size(480.0, 320.0) // Optimized size for notification content
             .position(100.0, 100.0)
             .focused(true)
             .visible(true)
+            .transparent(false)
+            .shadow(true)
             .build()
         {
             Ok(window) => {
@@ -154,6 +159,18 @@ fn pre_break_notification_window(app_handle: tauri::AppHandle) -> Result<(), Str
     let handle = app_handle.clone();
     std::thread::spawn(move || {
         println!("📂 Attempting to load: pre_break.html");
+
+        // Window dimensions - compact vertical layout
+        let window_width = 220.0; // Reduced width due to vertical layout
+        let window_height = 90.0; // Increased height for vertical stacking
+
+        // Calculate bottom center position (using common screen size as fallback)
+        let screen_width = 1920.0; // Will be adjusted by JavaScript for actual screen
+        let screen_height = 1080.0;
+        let x = (screen_width - window_width) / 2.0;
+        let y = screen_height - window_height - 120.0; // 120px from bottom
+
+        // Create window with calculated position
         match WebviewWindowBuilder::new(
             &handle,
             "pre_break",
@@ -163,16 +180,20 @@ fn pre_break_notification_window(app_handle: tauri::AppHandle) -> Result<(), Str
         .always_on_top(true)
         .decorations(false)
         .resizable(false)
-        .inner_size(350.0, 180.0)
-        .position(150.0, 150.0)
-        .focused(true)
+        .inner_size(window_width, window_height)
+        .position(x, y) // Start at calculated bottom-center position
+        .focused(false) // Don't steal focus
         .visible(true)
+        .skip_taskbar(true)
+        .transparent(true) // Allow transparent background
+        .shadow(false)
         .build()
         {
             Ok(window) => {
                 println!("✅ Pre-break window created successfully!");
                 println!("🎯 Window label: {}", window.label());
-                println!("📋 Expected content: Yellow pre-break warning with countdown");
+                println!("📋 Expected content: Compact yellow pre-break warning");
+                println!("📍 Size: {}x{}", window_width, window_height);
 
                 // Try to inject some debugging JavaScript after a delay
                 std::thread::sleep(std::time::Duration::from_millis(500));
@@ -248,6 +269,55 @@ fn control_media(action: &str) -> Result<(), String> {
             Ok(())
         }
         _ => Err("Unsupported media action".to_string()),
+    }
+}
+
+#[tauri::command]
+fn play_chime() -> Result<(), String> {
+    println!("🔔 Playing chime sound...");
+
+    #[cfg(target_os = "windows")]
+    {
+        use std::process::Command;
+
+        // Try to play the Windows default notification sound
+        match Command::new("powershell")
+            .arg("-Command")
+            .arg("[System.Media.SystemSounds]::Beep.Play()")
+            .output()
+        {
+            Ok(_) => {
+                println!("✅ Chime played successfully using SystemSounds");
+                Ok(())
+            }
+            Err(e) => {
+                println!("⚠️ SystemSounds failed, trying alternative: {}", e);
+
+                // Fallback: Use rundll32 to play default system sound
+                match Command::new("rundll32")
+                    .arg("user32.dll,MessageBeep")
+                    .arg("0")
+                    .output()
+                {
+                    Ok(_) => {
+                        println!("✅ Chime played successfully using MessageBeep");
+                        Ok(())
+                    }
+                    Err(e2) => {
+                        println!("❌ Both chime methods failed");
+                        Err(format!(
+                            "Failed to play chime: SystemSounds error: {}, MessageBeep error: {}",
+                            e, e2
+                        ))
+                    }
+                }
+            }
+        }
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        Err("Chime playback only supported on Windows".to_string())
     }
 }
 
@@ -357,6 +427,49 @@ fn debug_test_window(app_handle: tauri::AppHandle) -> Result<(), String> {
 }
 
 #[tauri::command]
+async fn get_primary_monitor_size(app_handle: tauri::AppHandle) -> Result<(u32, u32), String> {
+    match app_handle.primary_monitor() {
+        Ok(Some(monitor)) => {
+            let size = monitor.size();
+            Ok((size.width, size.height))
+        }
+        Ok(None) => {
+            // No monitor found, return common resolution
+            Ok((1920, 1080))
+        }
+        Err(e) => {
+            println!("Error getting monitor info: {}", e);
+            // Fallback to common resolution
+            Ok((1920, 1080))
+        }
+    }
+}
+
+#[tauri::command]
+fn skip_break(app_handle: tauri::AppHandle) -> Result<(), String> {
+    println!("⏭️ Skip break requested");
+
+    // Close pre-break window if it exists
+    if let Some(window) = app_handle.get_webview_window("pre_break") {
+        let _ = window.close();
+    }
+
+    // Close any active break windows
+    if let Some(window) = app_handle.get_webview_window("force_break") {
+        let _ = window.close();
+    }
+    if let Some(window) = app_handle.get_webview_window("notify") {
+        let _ = window.close();
+    }
+
+    // TODO: Notify main window that break was skipped
+    // This could be used to restart the timer or handle the skip logic
+
+    println!("✅ Break skipped successfully");
+    Ok(())
+}
+
+#[tauri::command]
 fn show_index_window(app_handle: tauri::AppHandle) -> Result<(), String> {
     println!("Showing index window...");
     if let Some(window) = app_handle.get_webview_window("main") {
@@ -383,11 +496,14 @@ pub fn run() {
             greet,
             lock_screen,
             control_media,
+            play_chime,
             is_meeting_active,
             force_break_window,
             close_window,
             notify_window,
             pre_break_notification_window,
+            get_primary_monitor_size,
+            skip_break,
             enable_autostart,
             disable_autostart,
             is_autostart_enabled,
