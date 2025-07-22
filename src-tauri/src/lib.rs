@@ -48,9 +48,6 @@ fn force_break_window(app_handle: tauri::AppHandle, duration: Option<u32>) -> Re
             .visible(true)
             .skip_taskbar(true)
             .maximized(true)
-            .position(0.0, 0.0)
-            .inner_size(1920.0, 1080.0) // Large size as fallback
-            .min_inner_size(800.0, 600.0)
             .transparent(false) // Ensure no transparency issues
             .shadow(false) // Remove window shadow
             .build()
@@ -161,16 +158,10 @@ fn pre_break_notification_window(app_handle: tauri::AppHandle) -> Result<(), Str
         println!("📂 Attempting to load: pre_break.html");
 
         // Window dimensions - compact vertical layout
-        let window_width = 220.0; // Reduced width due to vertical layout
-        let window_height = 90.0; // Increased height for vertical stacking
+        let window_width = 220.0;
+        let window_height = 90.0;
 
-        // Calculate bottom center position (using common screen size as fallback)
-        let screen_width = 1920.0; // Will be adjusted by JavaScript for actual screen
-        let screen_height = 1080.0;
-        let x = (screen_width - window_width) / 2.0;
-        let y = screen_height - window_height - 120.0; // 120px from bottom
-
-        // Create window with calculated position
+        // Create window - position will be set by JavaScript after getting actual screen size
         match WebviewWindowBuilder::new(
             &handle,
             "pre_break",
@@ -181,7 +172,6 @@ fn pre_break_notification_window(app_handle: tauri::AppHandle) -> Result<(), Str
         .decorations(false)
         .resizable(false)
         .inner_size(window_width, window_height)
-        .position(x, y) // Start at calculated bottom-center position
         .focused(false) // Don't steal focus
         .visible(true)
         .skip_taskbar(true)
@@ -583,13 +573,15 @@ async fn get_primary_monitor_size(app_handle: tauri::AppHandle) -> Result<(u32, 
             Ok((size.width, size.height))
         }
         Ok(None) => {
-            // No monitor found, return common resolution
-            Ok((1920, 1080))
+            // No monitor found, try to get screen size from system
+            println!("No primary monitor found, attempting to get screen size from system");
+            // Return a reasonable default that will be overridden by JavaScript
+            Ok((800, 600))
         }
         Err(e) => {
-            println!("Error getting monitor info: {}", e);
-            // Fallback to common resolution
-            Ok((1920, 1080))
+            println!("Error getting monitor info: {}, using default size", e);
+            // Return a reasonable default that will be overridden by JavaScript
+            Ok((800, 600))
         }
     }
 }
@@ -613,11 +605,7 @@ fn meeting_detected_notification(app_handle: tauri::AppHandle) -> Result<(), Str
         let window_width = 320.0;
         let window_height = 130.0;
 
-        // Calculate top-right position
-        let screen_width = 1920.0; // Will be adjusted by JavaScript for actual screen
-        let x = screen_width - window_width - 20.0; // 20px from right edge
-        let y = 60.0; // 60px from top
-
+        // Create window - position will be set by JavaScript after getting actual screen size
         match WebviewWindowBuilder::new(
             &handle,
             "meeting_notification",
@@ -628,7 +616,6 @@ fn meeting_detected_notification(app_handle: tauri::AppHandle) -> Result<(), Str
         .decorations(false)
         .resizable(false)
         .inner_size(window_width, window_height)
-        .position(x, y)
         .focused(false) // Don't steal focus
         .visible(true)
         .skip_taskbar(true)
