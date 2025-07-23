@@ -1,123 +1,300 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta charset="UTF-8" />
     <title>Meeting Detected</title>
     <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            height: 100vh;
-            border-radius: 12px;
-            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
-            overflow: hidden;
-        }
-
-        .notification-container {
-            text-align: center;
-            padding: 20px;
-            width: 100%;
-        }
-
-        .icon {
-            font-size: 24px;
-            margin-bottom: 8px;
-            display: block;
-        }
-
-        .title {
-            font-size: 14px;
-            font-weight: 700;
-            margin-bottom: 2px;
-            line-height: 1.2;
-            opacity: 0.9;
-        }
-
-        .subtitle {
-            font-size: 16px;
-            font-weight: 600;
-            margin-bottom: 4px;
-            line-height: 1.2;
-        }
-
-        .message {
-            font-size: 13px;
-            opacity: 0.9;
-            line-height: 1.3;
-        }
-
-        .auto-close {
-            position: absolute;
-            bottom: 4px;
-            right: 12px;
-            font-size: 10px;
-            opacity: 0.7;
-        }
+      body {
+        background: transparent;
+        margin: 0;
+        padding: 4px;
+        font-family: Inter, Arial, sans-serif;
+        overflow: hidden;
+        user-select: none;
+        -webkit-app-region: drag;
+        width: 100%;
+        height: 100%;
+        box-sizing: border-box;
+      }
+      .meeting-notification {
+        background: #4f46e5;
+        color: #fff;
+        padding: 8px 12px;
+        border-radius: 6px;
+        font-size: 11px;
+        font-weight: 600;
+        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        width: calc(100% - 8px);
+        max-width: 220px;
+        position: relative;
+        box-sizing: border-box;
+      }
+      .app-name {
+        font-size: 9px;
+        font-weight: 500;
+        opacity: 0.8;
+        text-align: center;
+        margin-bottom: 4px;
+        white-space: nowrap;
+      }
+      .main-content {
+        display: grid;
+        grid-template-columns: auto 1fr auto;
+        align-items: center;
+        gap: 8px;
+      }
+      .meeting-icon {
+        font-size: 16px;
+        opacity: 0.9;
+      }
+      .meeting-info {
+        text-align: left;
+        flex: 1;
+      }
+      .meeting-title {
+        font-size: 12px;
+        font-weight: 700;
+        margin-bottom: 1px;
+      }
+      .meeting-message {
+        font-size: 10px;
+        opacity: 0.8;
+        line-height: 1.2;
+      }
+      .countdown-display {
+        font-size: 10px;
+        opacity: 0.7;
+        text-align: right;
+        white-space: nowrap;
+      }
+      .fade-out {
+        opacity: 0;
+        transition: opacity 0.5s ease-out;
+      }
+      .progress-bar {
+        position: absolute;
+        bottom: 0;
+        left: 0;
+        height: 100%;
+        background: rgba(255, 255, 255, 0.2);
+        border-radius: 0 0 6px 6px;
+        width: 0%;
+        transition: width 0.1s linear;
+        opacity: 0;
+      }
+      .progress-bar.visible {
+        opacity: 1;
+      }
     </style>
 </head>
 <body>
-    <div class="notification-container">
-        <div class="title">Break Reminder Pro</div>
-        <div class="icon">🤝</div>
-        <div class="subtitle">Meeting Detected</div>
-        <div class="message">Break postponed by 10 minutes</div>
-        <div class="auto-close">Auto-close in <span id="countdown">4</span>s</div>
+    <div class="meeting-notification" id="meeting-container">
+      <div class="app-name">Break Reminder Pro</div>
+      <div class="main-content">
+        <div class="meeting-icon">🤝</div>
+        <div class="meeting-info">
+          <div class="meeting-title">Meeting Detected</div>
+          <div class="meeting-message">Break postponed by 10 min</div>
+        </div>
+        <div class="countdown-display" id="countdown-display">4s</div>
+      </div>
+      <div class="progress-bar" id="auto-close-progress"></div>
     </div>
 
     <script>
-        console.log('🤝 Meeting notification window loaded');
+      console.log('🤝 Meeting notification window loaded successfully!');
+      document.title = 'Meeting Detected - LOADED';
+      
+      let autoCloseTimer = null;
+      let progressTimer = null;
+      let autoCloseDuration = 4000; // 4 seconds
+      let autoCloseStartTime = null;
+      
+      // Close window function
+      async function closeWindow() {
+        try {
+          const { invoke } = window.__TAURI__.core;
+          await invoke('close_window', { label: 'meeting_notification' });
+        } catch (error) {
+          console.error('Error closing meeting notification window:', error);
+          try {
+            const { getCurrentWindow } = window.__TAURI__.window;
+            await getCurrentWindow().close();
+          } catch (fallbackError) {
+            console.error('Fallback close failed:', fallbackError);
+          }
+        }
+      }
+      
+      // Position management (similar to pre-break)
+      async function loadPosition() {
+        try {
+          // Check if window was positioned by Rust
+          if (window.RUST_POSITIONED) {
+            console.log('🎯 Meeting notification already positioned by Rust - skipping JS positioning');
+            const { getCurrentWindow } = window.__TAURI__.window;
+            const currentWindow = getCurrentWindow();
+            await currentWindow.show();
+            await currentWindow.setAlwaysOnTop(true);
+            return;
+          }
+          
+          console.log('🎯 Rust positioning not detected for meeting notification, using JavaScript fallback');
+          await setDefaultPosition();
+        } catch (error) {
+          console.error('Error in meeting notification loadPosition:', error);
+          await setDefaultPosition();
+        }
+      }
+      
+      async function setDefaultPosition() {
+        try {
+          const { getCurrentWindow } = window.__TAURI__.window;
+          const { invoke } = window.__TAURI__.core;
+          const window = getCurrentWindow();
+          
+          await new Promise(resolve => setTimeout(resolve, 100));
+          
+          const size = await window.outerSize();
+          
+          let screenWidth, screenHeight;
+          try {
+            const [width, height] = await invoke('get_primary_monitor_size');
+            screenWidth = width;
+            screenHeight = height;
+          } catch (error) {
+            console.warn('Failed to get monitor size for meeting notification, using screen API:', error);
+            screenWidth = screen.width;
+            screenHeight = screen.height;
+          }
+          
+          console.log(`Meeting notification - Screen: ${screenWidth}x${screenHeight}, Window: ${size.width}x${size.height}`);
+          
+          // Position at bottom center (above pre-break position)
+          const x = Math.floor((screenWidth - size.width) / 2);
+          const y = screenHeight - size.height - 250; // 250px from bottom
+          
+          console.log(`🎯 Positioning meeting notification at BOTTOM CENTER: (${x}, ${y})`);
+          await window.setPosition({ x, y });
+          
+          await window.show();
+          await window.setAlwaysOnTop(true);
+          
+        } catch (error) {
+          console.error('Error setting meeting notification default position:', error);
+        }
+      }
+      
+      // Auto-close functionality with progress indicator
+      function startAutoClose() {
+        if (autoCloseTimer) clearTimeout(autoCloseTimer);
+        if (progressTimer) clearInterval(progressTimer);
         
-        // Countdown timer
-        let seconds = 4;
-        const countdownElement = document.getElementById('countdown');
+        const progressBar = document.getElementById('auto-close-progress');
+        progressBar.classList.add('visible');
         
-        const countdownInterval = setInterval(() => {
-            seconds--;
-            countdownElement.textContent = seconds;
-            
-            if (seconds <= 0) {
-                clearInterval(countdownInterval);
-            }
-        }, 1000);
-
-        // Position window at top-right of screen
-        window.addEventListener('DOMContentLoaded', async () => {
-            try {
-                // Get screen dimensions from Tauri
-                const { invoke } = window.__TAURI__.core;
-                const [screenWidth, screenHeight] = await invoke('get_primary_monitor_size');
-                
-                // Calculate position (top-right corner with margin)
-                const windowWidth = 320;
-                const windowHeight = 120;
-                const margin = 20;
-                
-                const x = screenWidth - windowWidth - margin;
-                const y = margin + 40; // Extra margin from top for taskbar/menu
-                
-                // Position the window
-                await window.__TAURI__.webviewWindow.getCurrent().setPosition({
-                    type: 'Physical',
-                    x: x,
-                    y: y
-                });
-                
-                console.log(`📍 Positioned meeting notification at (${x}, ${y})`);
-            } catch (error) {
-                console.error('Failed to position meeting notification window:', error);
-            }
+        autoCloseStartTime = Date.now();
+        
+        // Update progress bar and countdown
+        progressTimer = setInterval(() => {
+          const elapsed = Date.now() - autoCloseStartTime;
+          const progress = Math.min((elapsed / autoCloseDuration) * 100, 100);
+          progressBar.style.width = progress + '%';
+          
+          // Update countdown display
+          const remaining = Math.ceil((autoCloseDuration - elapsed) / 1000);
+          const countdownDisplay = document.getElementById('countdown-display');
+          if (countdownDisplay && remaining > 0) {
+            countdownDisplay.textContent = remaining + 's';
+          }
+          
+          if (progress >= 100) {
+            clearInterval(progressTimer);
+          }
+        }, 50);
+        
+        // Set the main auto-close timer
+        autoCloseTimer = setTimeout(() => {
+          const container = document.getElementById('meeting-container');
+          container.classList.add('fade-out');
+          
+          setTimeout(() => {
+            closeWindow();
+          }, 500);
+        }, autoCloseDuration);
+      }
+      
+      // Dragging functionality (similar to pre-break)
+      function initDragging() {
+        const container = document.getElementById('meeting-container');
+        let isDragging = false;
+        let dragOffset = { x: 0, y: 0 };
+        
+        container.addEventListener('mousedown', (e) => {
+          isDragging = true;
+          dragOffset.x = e.clientX;
+          dragOffset.y = e.clientY;
+          container.style.cursor = 'grabbing';
         });
+        
+        document.addEventListener('mousemove', async (e) => {
+          if (!isDragging) return;
+          
+          const deltaX = e.clientX - dragOffset.x;
+          const deltaY = e.clientY - dragOffset.y;
+          
+          try {
+            const { getCurrentWindow } = window.__TAURI__.window;
+            const window = getCurrentWindow();
+            const currentPos = await window.outerPosition();
+            await window.setPosition({
+              x: currentPos.x + deltaX,
+              y: currentPos.y + deltaY
+            });
+          } catch (error) {
+            console.error('Error during meeting notification drag:', error);
+          }
+          
+          dragOffset.x = e.clientX;
+          dragOffset.y = e.clientY;
+        });
+        
+        document.addEventListener('mouseup', () => {
+          if (isDragging) {
+            isDragging = false;
+            container.style.cursor = 'grab';
+          }
+        });
+        
+        container.style.cursor = 'grab';
+      }
+      
+      // Keyboard shortcuts
+      document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+          closeWindow();
+        }
+      });
+      
+      // Initialize everything
+      try {
+        // Wait a bit for Rust to set position, then initialize
+        setTimeout(() => {
+          loadPosition();
+        }, 100);
+        
+        // Initialize other features
+        setTimeout(() => {
+          initDragging();
+          startAutoClose();
+        }, 400);
+        
+        console.log('Meeting notification initialized successfully');
+      } catch (error) {
+        console.error('Error in meeting notification:', error);
+        document.body.innerHTML = `<div style="color: red; padding: 20px;">Error: ${error.message}</div>`;
+      }
     </script>
 </body>
 </html>

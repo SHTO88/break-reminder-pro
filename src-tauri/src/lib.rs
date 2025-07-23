@@ -161,7 +161,27 @@ fn pre_break_notification_window(app_handle: tauri::AppHandle) -> Result<(), Str
         let window_width = 220.0;
         let window_height = 90.0;
 
-        // Create window - position will be set by JavaScript after getting actual screen size
+        // Get screen dimensions to position at bottom center
+        let (screen_width, screen_height) = match handle.primary_monitor() {
+            Ok(Some(monitor)) => {
+                let size = monitor.size();
+                println!("📺 Monitor detected: {}x{}", size.width, size.height);
+                (size.width as f64, size.height as f64)
+            }
+            _ => {
+                println!("⚠️ Could not get monitor info, using default screen size");
+                (1920.0, 1080.0) // Default fallback
+            }
+        };
+
+        // Calculate bottom-center position with better margins
+        let x = (screen_width - window_width) / 2.0;
+        let y = screen_height - window_height - 150.0; // 150px from bottom for better visibility
+
+        println!("🎯 Positioning pre-break at BOTTOM CENTER: ({:.0}, {:.0}) on {:.0}x{:.0} screen", x, y, screen_width, screen_height);
+        println!("📏 Window size: {:.0}x{:.0}", window_width, window_height);
+
+        // Create window with initial position set
         match WebviewWindowBuilder::new(
             &handle,
             "pre_break",
@@ -172,8 +192,9 @@ fn pre_break_notification_window(app_handle: tauri::AppHandle) -> Result<(), Str
         .decorations(false)
         .resizable(false)
         .inner_size(window_width, window_height)
+        .position(x, y) // Set initial position to bottom center
         .focused(false) // Don't steal focus
-        .visible(true)
+        .visible(false) // Start hidden, show after positioning
         .skip_taskbar(true)
         .transparent(true) // Allow transparent background
         .shadow(false)
@@ -185,9 +206,31 @@ fn pre_break_notification_window(app_handle: tauri::AppHandle) -> Result<(), Str
                 println!("📋 Expected content: Compact yellow pre-break warning");
                 println!("📍 Size: {}x{}", window_width, window_height);
 
-                // Try to inject some debugging JavaScript after a delay
-                std::thread::sleep(std::time::Duration::from_millis(500));
-                let _ = window.eval("console.log('🔥 Pre-break window JavaScript executed!'); document.title = 'PRE-BREAK WINDOW LOADED';");
+                // Ensure position is set correctly and show window
+                std::thread::sleep(std::time::Duration::from_millis(100));
+                
+                // Double-check position and show window
+                if let Err(e) = window.set_position(tauri::Position::Physical(tauri::PhysicalPosition { x: x as i32, y: y as i32 })) {
+                    println!("⚠️ Failed to set position: {}", e);
+                }
+                
+                if let Err(e) = window.show() {
+                    println!("⚠️ Failed to show window: {}", e);
+                }
+                
+                if let Err(e) = window.set_always_on_top(true) {
+                    println!("⚠️ Failed to set always on top: {}", e);
+                }
+
+                // Inject JavaScript to disable conflicting positioning
+                std::thread::sleep(std::time::Duration::from_millis(300));
+                let js_code = format!(
+                    "console.log('🔥 Pre-break window positioned by Rust at ({:.0}, {:.0})'); \
+                     window.RUST_POSITIONED = true; \
+                     document.title = 'PRE-BREAK POSITIONED BY RUST';",
+                    x, y
+                );
+                let _ = window.eval(&js_code);
             }
             Err(e) => {
                 println!("❌ Failed to create pre-break window: {}", e);
@@ -613,11 +656,31 @@ fn meeting_detected_notification(app_handle: tauri::AppHandle) -> Result<(), Str
     std::thread::spawn(move || {
         println!("📂 Attempting to load: meeting_notification.html");
 
-        // Window dimensions - compact notification
-        let window_width = 320.0;
-        let window_height = 130.0;
+        // Window dimensions - compact notification (similar to pre-break)
+        let window_width = 240.0;
+        let window_height = 90.0;
 
-        // Create window - position will be set by JavaScript after getting actual screen size
+        // Get screen dimensions to position at bottom center (like pre-break)
+        let (screen_width, screen_height) = match handle.primary_monitor() {
+            Ok(Some(monitor)) => {
+                let size = monitor.size();
+                println!("📺 Monitor detected for meeting notification: {}x{}", size.width, size.height);
+                (size.width as f64, size.height as f64)
+            }
+            _ => {
+                println!("⚠️ Could not get monitor info for meeting notification, using default screen size");
+                (1920.0, 1080.0) // Default fallback
+            }
+        };
+
+        // Calculate bottom-center position (slightly above pre-break position)
+        let x = (screen_width - window_width) / 2.0;
+        let y = screen_height - window_height - 250.0; // 250px from bottom (above pre-break)
+
+        println!("🎯 Positioning meeting notification at BOTTOM CENTER: ({:.0}, {:.0}) on {:.0}x{:.0} screen", x, y, screen_width, screen_height);
+        println!("📏 Meeting notification window size: {:.0}x{:.0}", window_width, window_height);
+
+        // Create window with initial position set
         match WebviewWindowBuilder::new(
             &handle,
             "meeting_notification",
@@ -628,17 +691,35 @@ fn meeting_detected_notification(app_handle: tauri::AppHandle) -> Result<(), Str
         .decorations(false)
         .resizable(false)
         .inner_size(window_width, window_height)
+        .position(x, y) // Set initial position to bottom center
         .focused(false) // Don't steal focus
-        .visible(true)
+        .visible(false) // Start hidden, show after positioning
         .skip_taskbar(true)
         .transparent(true)
-        .shadow(true)
+        .shadow(false)
         .build()
         {
             Ok(window) => {
                 println!("✅ Meeting notification window created successfully!");
                 println!("🎯 Window label: {}", window.label());
                 println!("📋 Expected content: Meeting detected notification");
+                println!("📍 Size: {}x{}", window_width, window_height);
+
+                // Ensure position is set correctly and show window
+                std::thread::sleep(std::time::Duration::from_millis(100));
+                
+                // Double-check position and show window
+                if let Err(e) = window.set_position(tauri::Position::Physical(tauri::PhysicalPosition { x: x as i32, y: y as i32 })) {
+                    println!("⚠️ Failed to set meeting notification position: {}", e);
+                }
+                
+                if let Err(e) = window.show() {
+                    println!("⚠️ Failed to show meeting notification window: {}", e);
+                }
+                
+                if let Err(e) = window.set_always_on_top(true) {
+                    println!("⚠️ Failed to set meeting notification always on top: {}", e);
+                }
 
                 // Auto-close after 4 seconds
                 let window_clone = window.clone();
@@ -647,9 +728,15 @@ fn meeting_detected_notification(app_handle: tauri::AppHandle) -> Result<(), Str
                     let _ = window_clone.close();
                 });
 
-                // Try to inject some debugging JavaScript after a delay
-                std::thread::sleep(std::time::Duration::from_millis(500));
-                let _ = window.eval("console.log('🔥 Meeting notification window JavaScript executed!');");
+                // Inject JavaScript to disable conflicting positioning
+                std::thread::sleep(std::time::Duration::from_millis(300));
+                let js_code = format!(
+                    "console.log('🔥 Meeting notification positioned by Rust at ({:.0}, {:.0})'); \
+                     window.RUST_POSITIONED = true; \
+                     document.title = 'MEETING NOTIFICATION POSITIONED BY RUST';",
+                    x, y
+                );
+                let _ = window.eval(&js_code);
             }
             Err(e) => {
                 println!("❌ Failed to create meeting notification window: {}", e);
