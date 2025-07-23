@@ -10,7 +10,7 @@
     "withGlobalTauri": true,
     "windows": [
       {
-        "title": "break-reminder-pro-app",
+        "title": "Break Reminder Pro",
         "width": 800,
         "height": 600
       }

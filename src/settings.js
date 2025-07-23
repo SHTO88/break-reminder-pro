@@ -13,7 +13,6 @@ const defaultSettings = {
   pre_break_minutes: 0,
   pre_break_seconds: 30,
   break_chime: false,
-  recurring: false,
   autostart: false,
   auto_start_timer: false
 };

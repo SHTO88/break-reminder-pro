@@ -45,7 +45,7 @@ fn force_break_window(app_handle: tauri::AppHandle, duration: Option<u32>) -> Re
             .decorations(false)
             .resizable(false)
             .focused(true)
-            .visible(true)
+            .visible(false) // Start hidden to prevent white flash
             .skip_taskbar(true)
             .maximized(true)
             .transparent(false) // Ensure no transparency issues
@@ -57,10 +57,30 @@ fn force_break_window(app_handle: tauri::AppHandle, duration: Option<u32>) -> Re
                 println!("🎯 Window label: {}", window.label());
                 println!("📋 Expected content: Fullscreen break window with countdown");
 
-                // Try to inject debugging JavaScript after a delay
-                std::thread::sleep(std::time::Duration::from_millis(1000));
+                // Wait for content to load, then show window
+                std::thread::sleep(std::time::Duration::from_millis(800));
+                
+                // Show the window after content has loaded
+                if let Err(e) = window.show() {
+                    println!("⚠️ Failed to show force break window: {}", e);
+                } else {
+                    println!("✅ Force break window shown successfully");
+                }
+                
+                if let Err(e) = window.set_focus() {
+                    println!("⚠️ Failed to focus force break window: {}", e);
+                }
+                
+                // Inject JavaScript to confirm window is ready
+                std::thread::sleep(std::time::Duration::from_millis(100));
+                let _ = window.eval("console.log('🔥 Force break window shown by Rust'); document.body.style.opacity = '1';");
+
+                // Inject JavaScript to signal that window is ready
+                std::thread::sleep(std::time::Duration::from_millis(200));
                 let debug_js = format!(
-                    "console.log('🔥 Rust injected: Duration should be {} seconds'); console.log('🔗 Current URL:', window.location.href);",
+                    "console.log('🔥 Force break window shown by Rust'); \
+                     console.log('⏰ Duration: {} seconds'); \
+                     window.WINDOW_READY = true;",
                     break_duration
                 );
                 let _ = window.eval(&debug_js);

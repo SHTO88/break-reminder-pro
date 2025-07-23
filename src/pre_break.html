@@ -100,7 +100,13 @@
     }
 
     .progress-bar.paused {
-      background: rgba(255, 165, 0, 0.6);
+      background: rgba(255, 165, 0, 0.8);
+      animation: pulse-pause 1s infinite;
+    }
+    
+    @keyframes pulse-pause {
+      0%, 100% { opacity: 0.8; }
+      50% { opacity: 0.4; }
     }
   </style>
 </head>
@@ -356,18 +362,49 @@
 
     // Pause auto-hide (for hover)
     function pauseAutoHide() {
-      isAutoHidePaused = true;
-      const progressBar = document.getElementById('auto-hide-progress');
-      progressBar.classList.add('paused');
+      if (!isAutoHidePaused && autoHideTimer) {
+        console.log('⏸️ Pausing auto-hide timer');
+        
+        // Cancel the main timer that closes the window
+        clearTimeout(autoHideTimer);
+        autoHideTimer = null;
+        
+        isAutoHidePaused = true;
+        const progressBar = document.getElementById('auto-hide-progress');
+        progressBar.classList.add('paused');
+        
+        const currentProgress = parseFloat(progressBar.style.width) || 0;
+        console.log(`⏸️ Paused at ${currentProgress.toFixed(1)}% progress`);
+      }
     }
 
     // Resume auto-hide (after hover ends)
     function resumeAutoHide() {
-      if (autoHideTimer && !isDragging) {
+      if (!isDragging && isAutoHidePaused) {
+        console.log('▶️ Resuming auto-hide timer');
         isAutoHidePaused = false;
         const progressBar = document.getElementById('auto-hide-progress');
         progressBar.classList.remove('paused');
-        autoHideStartTime = Date.now() - (parseFloat(progressBar.style.width) / 100 * autoHideDuration);
+        
+        // Calculate how much time has already elapsed based on progress bar width
+        const currentProgress = parseFloat(progressBar.style.width) || 0;
+        const elapsedTime = (currentProgress / 100) * autoHideDuration;
+        const remainingTime = autoHideDuration - elapsedTime;
+        
+        // Update the start time for progress calculation
+        autoHideStartTime = Date.now() - elapsedTime;
+        
+        // Set a new timer for the remaining time
+        autoHideTimer = setTimeout(() => {
+          const container = document.getElementById('pre-break-container');
+          container.classList.add('fade-out');
+
+          setTimeout(() => {
+            closeWindow();
+          }, 500); // Wait for fade animation
+        }, remainingTime);
+        
+        console.log(`⏰ Resuming from ${currentProgress.toFixed(1)}% progress, ${Math.ceil(remainingTime/1000)}s remaining`);
       }
     }
 
@@ -381,8 +418,19 @@
     });
 
     // Mouse interaction to pause/resume auto-hide
-    document.addEventListener('mouseenter', pauseAutoHide);
-    document.addEventListener('mouseleave', resumeAutoHide);
+    function initMouseHover() {
+      const container = document.getElementById('pre-break-container');
+      
+      container.addEventListener('mouseenter', () => {
+        console.log('🖱️ Mouse entered pre-break notification - pausing auto-hide');
+        pauseAutoHide();
+      });
+      
+      container.addEventListener('mouseleave', () => {
+        console.log('🖱️ Mouse left pre-break notification - resuming auto-hide');
+        resumeAutoHide();
+      });
+    }
 
     let seconds = 30; // Default 30 seconds
     function updateCountdown() {
@@ -420,6 +468,7 @@
       // Initialize other features with small delay
       setTimeout(() => {
         initDragging();
+        initMouseHover();
         startAutoHide();
       }, 400);
 

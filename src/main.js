@@ -125,9 +125,16 @@ async function startTimer(seconds) {
     if (timerSeconds <= 0) {
       console.log('⏰ Timer reached zero! Triggering break...');
       clearInterval(timerInterval);
-      isTimerRunning = false;
+      
+      // Don't set isTimerRunning = false yet if recurring is enabled
+      // This prevents UI from jumping back to settings panel
+      const willRecur = currentTimerSettings && currentTimerSettings.recurring;
+      if (!willRecur) {
+        isTimerRunning = false;
+        updatePanelVisibility();
+      }
+      
       updateTimerControls();
-      updatePanelVisibility();
       handleBreakTime();
     }
   }, 1000);
@@ -165,10 +172,17 @@ function resumeTimer() {
     if (timerSeconds <= 0) {
       console.log('⏰ Timer reached zero (resumed)! Triggering break...');
       clearInterval(timerInterval);
-      isTimerRunning = false;
       isTimerPaused = false;
+      
+      // Don't set isTimerRunning = false yet if recurring is enabled
+      // This prevents UI from jumping back to settings panel
+      const willRecur = currentTimerSettings && currentTimerSettings.recurring;
+      if (!willRecur) {
+        isTimerRunning = false;
+        updatePanelVisibility();
+      }
+      
       updateTimerControls();
-      updatePanelVisibility();
       handleBreakTime();
     }
   }, 1000);
@@ -213,8 +227,9 @@ function updateTimerDisplay() {
       countdown.classList.remove('pulse');
     }
   } else if (isTimerRunning) {
+    // Timer reached zero but still running (break in progress with recurring enabled)
     countdown.textContent = "00:00";
-    label.textContent = "Break time!";
+    label.textContent = "Break in progress";
     countdown.classList.add('pulse');
   } else {
     countdown.textContent = "--:--";
@@ -476,11 +491,26 @@ async function triggerMainBreak(breakMode, settings) {
 
     if (settings.recurring) {
       console.log(`🔄 Setting up recurring timer for ${breakDurationSeconds} seconds`);
+      
+      // Update status to show break is in progress
+      document.getElementById('timer-status').textContent = `Break in progress... Next timer starts in ${Math.ceil(breakDurationSeconds/60)} minutes`;
+      
       recurringTimeout = setTimeout(async () => {
         console.log('🔄 Recurring timer triggered - starting next timer');
         const breakTimerSeconds = getBreakTimerValue();
-        await startTimer(breakTimerSeconds);
+        
+        // Update status before starting new timer
+        document.getElementById('timer-status').textContent = '🔄 Starting next timer session...';
+        
+        // Small delay to show the message
+        setTimeout(async () => {
+          await startTimer(breakTimerSeconds);
+        }, 500);
       }, breakDurationSeconds * 1000);
+    } else {
+      // If not recurring, now we can set timer as stopped
+      isTimerRunning = false;
+      updatePanelVisibility();
     }
 
   } catch (error) {
@@ -508,12 +538,7 @@ function handleBreakSkipped() {
   console.log('DEBUG: currentTimerSettings:', currentTimerSettings);
   console.log('DEBUG: wasRecurring:', wasRecurring);
   
-  // Update timer state
-  isTimerRunning = false;
-  isTimerPaused = false;
-  timerSeconds = 0;
-  
-  // If recurring is enabled, start the next timer immediately
+  // If recurring is enabled, start the next timer immediately (keep UI on timer screen)
   if (wasRecurring) {
     console.log('🔄 Starting next timer immediately due to break skip');
     
@@ -528,7 +553,12 @@ function handleBreakSkipped() {
       await startTimer(breakTimerSeconds);
     }, 500);
   } else {
-    // If recurring is not enabled, just stop the timer
+    // If recurring is not enabled, stop the timer and show settings
+    console.log('✅ Recurring not enabled, stopping timer');
+    isTimerRunning = false;
+    isTimerPaused = false;
+    timerSeconds = 0;
+    
     const statusElement = document.getElementById('timer-status');
     if (statusElement) {
       statusElement.textContent = '⏭️ Break skipped - Timer session finished';
@@ -549,17 +579,6 @@ function handleEarlyBreakReturn() {
   console.log('🔧 Recurring enabled:', currentTimerSettings?.recurring);
   console.log('🔧 Timer currently running:', isTimerRunning);
   
-  // Stop any currently running timer first
-  if (isTimerRunning) {
-    console.log('⏹️ Stopping current timer');
-    if (timerInterval) {
-      clearInterval(timerInterval);
-      timerInterval = null;
-    }
-    isTimerRunning = false;
-    isTimerPaused = false;
-  }
-  
   // Clear the existing recurring timeout since user returned early
   if (recurringTimeout) {
     console.log('⏰ Clearing existing recurring timeout');
@@ -567,7 +586,7 @@ function handleEarlyBreakReturn() {
     recurringTimeout = null;
   }
   
-  // If recurring is enabled, start the next timer immediately
+  // If recurring is enabled, start the next timer immediately (keep UI on timer screen)
   if (currentTimerSettings && currentTimerSettings.recurring) {
     console.log('🔄 Starting next timer immediately due to early return');
     
@@ -584,8 +603,13 @@ function handleEarlyBreakReturn() {
       await startTimer(breakTimerSeconds);
     }, 500); // Minimal delay just to show the message
   } else {
-    // If recurring is not enabled, show that break session is complete
+    // If recurring is not enabled, stop timer and show settings
     console.log('✅ Recurring not enabled, finishing session');
+    
+    // Now we can stop the timer since recurring is not enabled
+    isTimerRunning = false;
+    isTimerPaused = false;
+    
     const statusElement = document.getElementById('timer-status');
     if (statusElement) {
       statusElement.textContent = '✅ Break completed early - Timer session finished';

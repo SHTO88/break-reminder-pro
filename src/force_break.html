@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
@@ -12,12 +13,32 @@
       box-sizing: border-box;
     }
 
-    html, body {
+    html,
+    body {
       width: 100%;
       height: 100%;
       overflow: hidden;
-      background: #000;
+      background: #000 !important;
+      /* Force black background immediately */
       font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    }
+
+    /* Ensure black background is applied immediately */
+    html {
+      background-color: #000 !important;
+    }
+
+    /* Additional black background protection */
+    html::before {
+      content: '';
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: #000;
+      z-index: -2;
+      /* Behind everything */
     }
 
     body {
@@ -247,13 +268,25 @@
 
     /* Animations */
     @keyframes fadeInLater {
-      from { opacity: 0; }
-      to { opacity: 1; }
+      from {
+        opacity: 0;
+      }
+
+      to {
+        opacity: 1;
+      }
     }
 
     @keyframes fadeIn {
-      from { opacity: 0; transform: translateY(20px); }
-      to { opacity: 1; transform: translateY(0); }
+      from {
+        opacity: 0;
+        transform: translateY(20px);
+      }
+
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
     }
 
     .break-container {
@@ -326,9 +359,9 @@
 
   <script>
     console.log('Force break window loaded successfully!');
-    
+
     const { invoke } = window.__TAURI__.core;
-    
+
     // Timer variables
     let totalSeconds = 300;
     let currentSeconds = totalSeconds;
@@ -336,7 +369,7 @@
     let focusMode = false;
     let earlyReturnVisible = false;
     let currentAnswer = 0;
-    
+
     // DOM elements
     const countdownDisplay = document.getElementById('countdown-display');
     const progressCircle = document.getElementById('progress-circle');
@@ -348,80 +381,80 @@
     const mathError = document.getElementById('math-error');
     const mathSubmit = document.getElementById('math-submit');
     const mathCancel = document.getElementById('math-cancel');
-    
+
     // Progress circle setup
     const radius = 90;
     const circumference = 2 * Math.PI * radius;
-    
+
     function initProgressCircle() {
       progressCircle.style.strokeDasharray = circumference;
       progressCircle.style.strokeDashoffset = 0;
     }
-    
+
     function updateProgress() {
       const progress = (totalSeconds - currentSeconds) / totalSeconds;
       const offset = circumference - (progress * circumference);
       progressCircle.style.strokeDashoffset = offset;
     }
-    
+
     function formatTime(seconds) {
       const minutes = Math.floor(seconds / 60);
       const remainingSeconds = seconds % 60;
       return `${minutes.toString().padStart(2, '0')}:${remainingSeconds.toString().padStart(2, '0')}`;
     }
-    
+
     function updateCountdown() {
       countdownDisplay.textContent = formatTime(currentSeconds);
       updateProgress();
-      
+
       if (currentSeconds <= 0) {
         endBreak();
       } else {
         currentSeconds--;
       }
     }
-    
+
     function startTimer() {
       updateCountdown();
       timerInterval = setInterval(updateCountdown, 1000);
     }
-    
+
     function toggleFocusMode() {
       focusMode = !focusMode;
       document.body.classList.toggle('focus-mode', focusMode);
       console.log('Focus mode:', focusMode ? 'ON' : 'OFF');
     }
-    
+
     function toggleEarlyReturn() {
       earlyReturnVisible = !earlyReturnVisible;
       unlockContainer.style.display = earlyReturnVisible ? 'block' : 'none';
       console.log('Early return button:', earlyReturnVisible ? 'visible' : 'hidden');
     }
-    
+
     async function endBreak(isEarlyReturn = false) {
       if (timerInterval) {
         clearInterval(timerInterval);
       }
-      
+
       try {
         // If this is an early return (user clicked button), notify main window
         if (isEarlyReturn) {
           console.log('🏃 Early return detected - notifying main window');
           await invoke('break_ended_early');
         }
-        
+
         await invoke('close_window', { label: 'force_break' });
       } catch (error) {
         console.error('Error closing window:', error);
         window.close();
       }
     }
-    
+
     function generateMathProblem() {
       const operations = ['+', '-', '×'];
       const operation = operations[Math.floor(Math.random() * operations.length)];
       let num1, num2;
-      
+
       switch (operation) {
         case '+':
           num1 = Math.floor(Math.random() * 50) + 1;
@@ -439,10 +472,10 @@
           currentAnswer = num1 * num2;
           break;
       }
-      
+
       mathProblem.textContent = `${num1} ${operation} ${num2} = ?`;
     }
-    
+
     function showMathModal() {
       generateMathProblem();
       mathInput.value = '';
@@ -450,14 +483,14 @@
       mathModal.classList.add('show');
       setTimeout(() => mathInput.focus(), 100);
     }
-    
+
     function hideMathModal() {
       mathModal.classList.remove('show');
     }
-    
+
     function checkAnswer() {
       const userAnswer = parseInt(mathInput.value);
-      
+
       if (userAnswer === currentAnswer) {
         hideMathModal();
         endBreak(true); // Pass true to indicate this is an early return
@@ -465,14 +498,14 @@
         mathError.classList.remove('hidden');
         mathInput.value = '';
         mathInput.focus();
-        
+
         setTimeout(() => {
           generateMathProblem();
           mathError.classList.add('hidden');
         }, 1500);
       }
     }
-    
+
     function getBreakDuration() {
       try {
         // First try to get from URL parameters
@@ -480,13 +513,13 @@
         const duration = urlParams.get('duration');
         console.log('URL search params:', window.location.search);
         console.log('Duration from URL:', duration);
-        
+
         if (duration && !isNaN(parseInt(duration))) {
           const durationInt = parseInt(duration);
           console.log('Using duration from URL:', durationInt);
           return durationInt;
         }
-        
+
         // Fallback to localStorage
         const stored = localStorage.getItem('breakDuration');
         console.log('Duration from localStorage:', stored);
@@ -496,20 +529,20 @@
       } catch (error) {
         console.error('Error getting break duration:', error);
       }
-      
+
       console.log('Using default duration: 300 seconds');
       return 300;
     }
-    
+
     // Event listeners
     unlockBtn.addEventListener('click', showMathModal);
     mathSubmit.addEventListener('click', checkAnswer);
     mathCancel.addEventListener('click', hideMathModal);
-    
+
     mathInput.addEventListener('keypress', (e) => {
       if (e.key === 'Enter') checkAnswer();
     });
-    
+
     document.addEventListener('keydown', (e) => {
       if (e.key === 'Escape') {
         if (mathModal.classList.contains('show')) {
@@ -519,21 +552,21 @@
         }
         e.preventDefault();
       }
-      
+
       if (e.key === 'f' || e.key === 'F') {
         toggleFocusMode();
         e.preventDefault();
       }
-      
+
       // Block common escape shortcuts
       if ((e.key === 'F4' && e.altKey) || (e.key === 'Tab' && (e.altKey || e.ctrlKey))) {
         e.preventDefault();
       }
     });
-    
+
     document.addEventListener('contextmenu', (e) => e.preventDefault());
     document.addEventListener('selectstart', (e) => e.preventDefault());
-    
+
     // Handle window close events
     window.addEventListener('beforeunload', async (e) => {
       // If timer is still running, this is an early return
@@ -546,30 +579,37 @@
         }
       }
     });
-    
+
     // Initialize
     function init() {
       console.log('=== FORCE BREAK WINDOW INITIALIZATION ===');
       console.log('Current URL:', window.location.href);
       console.log('URL search:', window.location.search);
-      
+
       totalSeconds = getBreakDuration();
       currentSeconds = totalSeconds;
-      
+
       console.log('Final break duration:', totalSeconds, 'seconds');
       console.log('Formatted time:', formatTime(totalSeconds));
-      
+
       initProgressCircle();
       updateCountdown();
-      
-      setTimeout(startTimer, 500);
-      
+
+      console.log('✅ Force break UI ready and visible');
+
+      setTimeout(startTimer, 200);
+
       console.log(`Break timer initialized: ${totalSeconds} seconds`);
       console.log('Controls: F = toggle focus mode, ESC = toggle early return');
       console.log('=== INITIALIZATION COMPLETE ===');
     }
-    
+
+    // Ensure black background immediately
+    document.documentElement.style.backgroundColor = '#000';
+    document.body.style.backgroundColor = '#000';
+
     window.addEventListener('DOMContentLoaded', init);
   </script>
 </body>
+
 </html>
