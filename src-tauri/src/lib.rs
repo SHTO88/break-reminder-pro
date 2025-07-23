@@ -650,6 +650,24 @@ fn meeting_detected_notification(app_handle: tauri::AppHandle) -> Result<(), Str
 }
 
 #[tauri::command]
+fn break_ended_early(app_handle: tauri::AppHandle) -> Result<(), String> {
+    println!("🏃 Break ended early - user returned");
+    
+    // Try to notify the main window about early return
+    if let Some(main_window) = app_handle.get_webview_window("main") {
+        println!("📱 Found main window, calling handleEarlyBreakReturn");
+        match main_window.eval("if (window.handleEarlyBreakReturn) { window.handleEarlyBreakReturn(); } else { console.error('handleEarlyBreakReturn function not found on window!'); }") {
+            Ok(_) => println!("✅ Successfully called handleEarlyBreakReturn"),
+            Err(e) => println!("❌ Error calling handleEarlyBreakReturn: {}", e),
+        }
+    } else {
+        println!("❌ Main window not found!");
+    }
+    
+    Ok(())
+}
+
+#[tauri::command]
 fn skip_break(app_handle: tauri::AppHandle) -> Result<(), String> {
     println!("⏭️ Skip break requested");
 
@@ -666,8 +684,16 @@ fn skip_break(app_handle: tauri::AppHandle) -> Result<(), String> {
         let _ = window.close();
     }
 
-    // TODO: Notify main window that break was skipped
-    // This could be used to restart the timer or handle the skip logic
+    // Notify main window that break was skipped
+    if let Some(main_window) = app_handle.get_webview_window("main") {
+        println!("📱 Found main window, calling handleBreakSkipped");
+        match main_window.eval("if (window.handleBreakSkipped) { window.handleBreakSkipped(); } else { console.error('handleBreakSkipped function not found on window!'); }") {
+            Ok(_) => println!("✅ Successfully called handleBreakSkipped"),
+            Err(e) => println!("❌ Error calling handleBreakSkipped: {}", e),
+        }
+    } else {
+        println!("❌ Main window not found!");
+    }
 
     println!("✅ Break skipped successfully");
     Ok(())
@@ -709,6 +735,7 @@ pub fn run() {
             pre_break_notification_window,
             meeting_detected_notification,
             get_primary_monitor_size,
+            break_ended_early,
             skip_break,
             enable_autostart,
             disable_autostart,

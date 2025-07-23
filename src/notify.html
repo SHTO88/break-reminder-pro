@@ -349,6 +349,13 @@
           }
           
           const { invoke } = window.__TAURI__.core;
+          
+          // Check if break ended early (before countdown finished)
+          if (breakTimeRemaining > 0) {
+            console.log('🏃 Break ended early with', breakTimeRemaining, 'seconds remaining');
+            await invoke('break_ended_early');
+          }
+          
           await invoke('close_window', { label: 'notify' });
           console.log('Break notification window closed');
         } catch (error) {

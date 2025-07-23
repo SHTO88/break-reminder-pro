@@ -7,6 +7,9 @@ let isTimerRunning = false;
 let isTimerPaused = false;
 let startTime = null;
 let pausedTime = 0;
+let preBreakTriggered = false;
+let currentTimerSettings = null; // Cache settings for current timer session
+let recurringTimeout = null; // Track recurring timer timeout
 
 // Default settings
 const defaultSettings = {
@@ -32,29 +35,22 @@ async function saveSettings() {
     const breakDurationMinutes = parseInt(document.getElementById("break-duration-minutes").value) || 0;
     const breakDurationSeconds = parseInt(document.getElementById("break-duration-seconds").value) || 0;
     
-    const settings = {
+    // Load existing settings first
+    const existingSettings = await loadSettings();
+    
+    // Only update the settings that are managed on this page
+    const updatedSettings = {
+      ...existingSettings,
       break_minutes: parseInt(document.getElementById("break-minutes").value) || 0,
       break_seconds: parseInt(document.getElementById("break-seconds").value) || 0,
       break_duration_minutes: breakDurationMinutes,
       break_duration_seconds: breakDurationSeconds,
       break_mode: document.querySelector('input[name="break-mode"]:checked')?.value || 'force',
-      recurring: document.getElementById("recurring").checked,
-      auto_pause: false, // These are handled in settings page
-      meeting_detect: false,
-      pre_break: false,
-      pre_break_minutes: 0,
-      pre_break_seconds: 30,
-      break_chime: false,
-      autostart: false,
-      auto_start_timer: false
+      recurring: document.getElementById("recurring").checked
     };
 
-    // Load existing settings to preserve values not on main page
-    const existingSettings = await loadSettings();
-    const mergedSettings = { ...existingSettings, ...settings };
-
-    await invoke('save_settings', { settings: mergedSettings });
-    console.log('Settings saved:', mergedSettings);
+    await invoke('save_settings', { settings: updatedSettings });
+    console.log('Settings saved:', updatedSettings);
     console.log(`Break duration saved as: ${breakDurationMinutes}m ${breakDurationSeconds}s`);
   } catch (error) {
     console.error('Failed to save settings:', error);
@@ -66,7 +62,8 @@ async function loadSettings() {
     const settings = await invoke('load_settings');
     if (settings) {
       console.log('Settings loaded:', settings);
-      return settings;
+      // Merge with defaults to ensure all properties exist
+      return { ...defaultSettings, ...settings };
     }
     return defaultSettings;
   } catch (error) {
@@ -96,20 +93,37 @@ function applySettingsToUI(settings) {
 }
 
 // Timer functions
-function startTimer(seconds) {
+async function startTimer(seconds) {
+  console.log(`🚀 Starting timer with ${seconds} seconds (${Math.floor(seconds/60)}:${seconds%60})`);
+  
+  // Load settings once at the start of the timer
+  currentTimerSettings = await loadSettings();
+  console.log('⚙️ Settings loaded for timer session:', currentTimerSettings);
+  
   timerSeconds = seconds;
   isTimerRunning = true;
   startTime = Date.now();
+  preBreakTriggered = false; // Reset pre-break flag
   updateTimerDisplay();
   updateTimerControls();
   updatePanelVisibility();
 
   if (timerInterval) clearInterval(timerInterval);
-  timerInterval = setInterval(() => {
+  timerInterval = setInterval(async () => {
     timerSeconds--;
     updateTimerDisplay();
     updateRunningTime();
+    
+    // Debug logging for last 30 seconds
+    if (timerSeconds <= 30) {
+      console.log(`⏰ Timer countdown: ${timerSeconds} seconds remaining`);
+    }
+    
+    // Check for pre-break warning trigger
+    await checkPreBreakTrigger();
+    
     if (timerSeconds <= 0) {
+      console.log('⏰ Timer reached zero! Triggering break...');
       clearInterval(timerInterval);
       isTimerRunning = false;
       updateTimerControls();
@@ -135,11 +149,21 @@ function resumeTimer() {
   isTimerPaused = false;
   startTime = Date.now();
   
-  timerInterval = setInterval(() => {
+  timerInterval = setInterval(async () => {
     timerSeconds--;
     updateTimerDisplay();
     updateRunningTime();
+    
+    // Debug logging for last 30 seconds
+    if (timerSeconds <= 30) {
+      console.log(`⏰ Timer countdown (resumed): ${timerSeconds} seconds remaining`);
+    }
+    
+    // Check for pre-break warning trigger
+    await checkPreBreakTrigger();
+    
     if (timerSeconds <= 0) {
+      console.log('⏰ Timer reached zero (resumed)! Triggering break...');
       clearInterval(timerInterval);
       isTimerRunning = false;
       isTimerPaused = false;
@@ -157,11 +181,16 @@ function stopTimer() {
     clearInterval(timerInterval);
     timerInterval = null;
   }
+  if (recurringTimeout) {
+    clearTimeout(recurringTimeout);
+    recurringTimeout = null;
+  }
   isTimerRunning = false;
   isTimerPaused = false;
   timerSeconds = 0;
   startTime = null;
   pausedTime = 0;
+  currentTimerSettings = null; // Clear cached settings
   updateTimerDisplay();
   updateTimerControls();
   updatePanelVisibility();
@@ -323,8 +352,45 @@ function getBreakDurationValue() {
   return totalSeconds;
 }
 
+// Pre-break trigger check
+async function checkPreBreakTrigger() {
+  if (preBreakTriggered) return; // Already triggered
+  if (!currentTimerSettings) return; // No settings loaded
+  
+  try {
+    if (!currentTimerSettings.pre_break) return; // Pre-break not enabled
+    
+    const preBreakTimingSeconds = (currentTimerSettings.pre_break_minutes * 60) + currentTimerSettings.pre_break_seconds;
+    
+    // Trigger pre-break when remaining time equals pre-break timing
+    if (timerSeconds === preBreakTimingSeconds) {
+      console.log(`🚨 PRE-BREAK TRIGGER! ${preBreakTimingSeconds} seconds remaining (should show at bottom center)`);
+      preBreakTriggered = true;
+      
+      await invoke("pre_break_notification_window");
+      
+      const minutes = Math.floor(preBreakTimingSeconds / 60);
+      const seconds = preBreakTimingSeconds % 60;
+      let timingText = '';
+      if (minutes > 0) {
+        timingText = `${minutes} minute${minutes > 1 ? 's' : ''}`;
+        if (seconds > 0) {
+          timingText += ` ${seconds} second${seconds > 1 ? 's' : ''}`;
+        }
+      } else {
+        timingText = `${seconds} second${seconds > 1 ? 's' : ''}`;
+      }
+      
+      document.getElementById('timer-status').textContent = `Pre-break warning shown - break starting in ${timingText}`;
+    }
+  } catch (error) {
+    console.error('Error checking pre-break trigger:', error);
+  }
+}
+
 // Break handling
 async function handleBreakTime() {
+  console.log('🚨 BREAK TIME TRIGGERED! Starting break handling...');
   try {
     // Save current settings first to ensure we use the latest values
     await saveSettings();
@@ -332,15 +398,14 @@ async function handleBreakTime() {
     // Small delay to ensure settings are saved
     await new Promise(resolve => setTimeout(resolve, 100));
     
-    // Load current settings to get smart features
-    const settings = await loadSettings();
+    // Use cached settings from timer session
+    const settings = currentTimerSettings || await loadSettings();
     const breakMode = document.querySelector('input[name="break-mode"]:checked').value;
 
-    console.log('Break time! Using settings:', {
-      break_duration_minutes: settings.break_duration_minutes,
-      break_duration_seconds: settings.break_duration_seconds,
-      total_duration: (settings.break_duration_minutes * 60) + settings.break_duration_seconds
-    });
+    console.log('🔧 Break time! Using cached settings:', settings);
+    console.log('🔧 Pre-break enabled:', settings.pre_break);
+    console.log('🔧 Pre-break timing:', settings.pre_break_minutes, 'minutes', settings.pre_break_seconds, 'seconds');
+    console.log('🔧 Break mode:', breakMode);
 
     // Double-check that settings match UI
     const uiDurationMinutes = parseInt(document.getElementById("break-duration-minutes").value) || 0;
@@ -367,38 +432,13 @@ async function handleBreakTime() {
           console.error("Failed to show meeting notification:", error);
         }
         
-        startTimer(10 * 60);
+        await startTimer(10 * 60);
         return;
       }
     }
 
-    // Show pre-break notification if enabled
-    if (settings.pre_break) {
-      const preBreakTimingSeconds = (settings.pre_break_minutes * 60) + settings.pre_break_seconds;
-      const preBreakTimingMs = preBreakTimingSeconds * 1000;
-
-      await invoke("pre_break_notification_window");
-
-      const minutes = Math.floor(preBreakTimingSeconds / 60);
-      const seconds = preBreakTimingSeconds % 60;
-      let timingText = '';
-      if (minutes > 0) {
-        timingText = `${minutes} minute${minutes > 1 ? 's' : ''}`;
-        if (seconds > 0) {
-          timingText += ` ${seconds} second${seconds > 1 ? 's' : ''}`;
-        }
-      } else {
-        timingText = `${seconds} second${seconds > 1 ? 's' : ''}`;
-      }
-
-      document.getElementById('timer-status').textContent = `Pre-break warning shown - break starting in ${timingText}`;
-
-      setTimeout(async () => {
-        await triggerMainBreak(breakMode, settings);
-      }, preBreakTimingMs);
-    } else {
-      await triggerMainBreak(breakMode, settings);
-    }
+    // Trigger the main break immediately (pre-break was already shown during countdown)
+    await triggerMainBreak(breakMode, settings);
 
   } catch (error) {
     console.error("Error handling break time:", error);
@@ -435,15 +475,105 @@ async function triggerMainBreak(breakMode, settings) {
     }
 
     if (settings.recurring) {
-      setTimeout(() => {
+      console.log(`🔄 Setting up recurring timer for ${breakDurationSeconds} seconds`);
+      recurringTimeout = setTimeout(async () => {
+        console.log('🔄 Recurring timer triggered - starting next timer');
         const breakTimerSeconds = getBreakTimerValue();
-        startTimer(breakTimerSeconds);
+        await startTimer(breakTimerSeconds);
       }, breakDurationSeconds * 1000);
     }
 
   } catch (error) {
     console.error("Error triggering break:", error);
     document.getElementById('timer-status').textContent = 'Error during break. Please check your settings.';
+  }
+}
+
+// Handle break skip (when user clicks skip break button)
+function handleBreakSkipped() {
+  console.log('⏭️ Break was skipped by user');
+  
+  // Clear any existing timers
+  if (timerInterval) {
+    clearInterval(timerInterval);
+    timerInterval = null;
+  }
+  if (recurringTimeout) {
+    clearTimeout(recurringTimeout);
+    recurringTimeout = null;
+  }
+  
+  // Store recurring setting before clearing timer state
+  const wasRecurring = currentTimerSettings && currentTimerSettings.recurring;
+  console.log('DEBUG: currentTimerSettings:', currentTimerSettings);
+  console.log('DEBUG: wasRecurring:', wasRecurring);
+  
+  // Update timer state
+  isTimerRunning = false;
+  isTimerPaused = false;
+  timerSeconds = 0;
+  
+  // If recurring is enabled, start the next timer immediately
+  if (wasRecurring) {
+    console.log('🔄 Starting next timer immediately due to break skip');
+    
+    const statusElement = document.getElementById('timer-status');
+    if (statusElement) {
+      statusElement.textContent = '⏭️ Break skipped - Starting next timer session...';
+    }
+    
+    // Start next timer immediately
+    setTimeout(async () => {
+      const breakTimerSeconds = getBreakTimerValue();
+      await startTimer(breakTimerSeconds);
+    }, 500);
+  } else {
+    // If recurring is not enabled, just stop the timer
+    const statusElement = document.getElementById('timer-status');
+    if (statusElement) {
+      statusElement.textContent = '⏭️ Break skipped - Timer session finished';
+    }
+    
+    // Clear settings and reset UI state
+    currentTimerSettings = null;
+    updateTimerDisplay();
+    updateTimerControls();
+    updatePanelVisibility();
+  }
+}
+
+// Handle early return from break (when user closes break window early)
+function handleEarlyBreakReturn() {
+  console.log('🏃 User returned early from break');
+  
+  // Clear the existing recurring timeout since user returned early
+  if (recurringTimeout) {
+    clearTimeout(recurringTimeout);
+    recurringTimeout = null;
+  }
+  
+  // If recurring is enabled, start the next timer immediately
+  console.log('DEBUG: currentTimerSettings:', currentTimerSettings);
+  if (currentTimerSettings && currentTimerSettings.recurring) {
+    console.log('🔄 Starting next timer immediately due to early return');
+    
+    // Show immediate feedback to user
+    const statusElement = document.getElementById('timer-status');
+    if (statusElement) {
+      statusElement.textContent = '🔄 Break ended early - Starting next timer session...';
+    }
+    
+    // Start immediately with minimal delay
+    setTimeout(async () => {
+      const breakTimerSeconds = getBreakTimerValue();
+      await startTimer(breakTimerSeconds);
+    }, 500); // Minimal delay just to show the message
+  } else {
+    // If recurring is not enabled, show that break session is complete
+    const statusElement = document.getElementById('timer-status');
+    if (statusElement) {
+      statusElement.textContent = '✅ Break completed early - Timer session finished';
+    }
   }
 }
 
@@ -494,17 +624,24 @@ window.addEventListener("DOMContentLoaded", async () => {
 
   // Timer controls
   document.getElementById('start-timer').addEventListener('click', async () => {
-    if (isTimerRunning) return;
+    console.log('🎯 Start timer button clicked');
+    if (isTimerRunning) {
+      console.log('⚠️ Timer already running, ignoring click');
+      return;
+    }
 
     const validationError = validateTimeInputs();
     if (validationError) {
+      console.log('❌ Validation error:', validationError);
       alert(validationError);
       return;
     }
 
+    console.log('💾 Saving settings before starting timer...');
     await saveSettings();
     const breakTimerSeconds = getBreakTimerValue();
-    startTimer(breakTimerSeconds);
+    console.log('⏰ Break timer value:', breakTimerSeconds, 'seconds');
+    await startTimer(breakTimerSeconds);
   });
 
   document.getElementById('stop-timer').addEventListener('click', () => {
@@ -549,8 +686,9 @@ window.addEventListener("DOMContentLoaded", async () => {
       }
     });
   }
-
-
-
+  // Make functions available globally for Rust to call
+  window.handleBreakSkipped = handleBreakSkipped;
+  window.handleEarlyBreakReturn = handleEarlyBreakReturn;
+  
   console.log('Break Reminder Pro main page loaded successfully!');
 });

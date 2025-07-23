@@ -22,15 +22,15 @@ const defaultSettings = {
 function initTabs() {
   const tabs = document.querySelectorAll('.tab');
   const tabContents = document.querySelectorAll('.tab-content');
-  
+
   tabs.forEach(tab => {
     tab.addEventListener('click', () => {
       const targetTab = tab.dataset.tab;
-      
+
       // Update active tab
       tabs.forEach(t => t.classList.remove('active'));
       tab.classList.add('active');
-      
+
       // Show target content
       tabContents.forEach(content => content.classList.remove('active'));
       document.getElementById(`${targetTab}-tab`).classList.add('active');
@@ -41,29 +41,23 @@ function initTabs() {
 // Settings management
 async function saveSettings() {
   try {
-    const settings = {
-      break_minutes: 50, // These are handled on main page
-      break_seconds: 0,
-      break_duration_minutes: 10,
-      break_duration_seconds: 0,
-      break_mode: 'force',
+    // Load existing settings first
+    const existingSettings = await loadSettings();
+
+    // Only update the settings that are managed on this page
+    const updatedSettings = {
+      ...existingSettings,
       auto_pause: document.getElementById("auto-pause").checked,
       meeting_detect: document.getElementById("meeting-detect").checked,
       pre_break: document.getElementById("pre-break").checked,
       pre_break_minutes: parseInt(document.getElementById("pre-break-minutes").value) || 0,
       pre_break_seconds: parseInt(document.getElementById("pre-break-seconds").value) || 0,
       break_chime: document.getElementById("break-chime").checked,
-      recurring: document.getElementById("recurring").checked,
-      autostart: document.getElementById("autostart").checked,
-      auto_start_timer: false
+      autostart: document.getElementById("autostart").checked
     };
-    
-    // Load existing settings to preserve values from main page
-    const existingSettings = await loadSettings();
-    const mergedSettings = { ...existingSettings, ...settings };
-    
-    await invoke('save_settings', { settings: mergedSettings });
-    console.log('Settings saved:', mergedSettings);
+
+    await invoke('save_settings', { settings: updatedSettings });
+    console.log('Settings saved:', updatedSettings);
   } catch (error) {
     console.error('Failed to save settings:', error);
   }
@@ -74,7 +68,8 @@ async function loadSettings() {
     const settings = await invoke('load_settings');
     if (settings) {
       console.log('Settings loaded:', settings);
-      return settings;
+      // Merge with defaults to ensure all properties exist
+      return { ...defaultSettings, ...settings };
     }
     return defaultSettings;
   } catch (error) {
@@ -92,12 +87,11 @@ function applySettingsToUI(settings) {
     document.getElementById("pre-break-minutes").value = settings.pre_break_minutes || 0;
     document.getElementById("pre-break-seconds").value = settings.pre_break_seconds || 30;
     document.getElementById("break-chime").checked = settings.break_chime;
-    document.getElementById("recurring").checked = settings.recurring;
     document.getElementById("autostart").checked = settings.autostart;
-    
+
     // Update pre-break timing visibility
     updatePreBreakTimingVisibility();
-    
+
     console.log('Settings applied to UI:', settings);
   } catch (error) {
     console.error('Failed to apply settings to UI:', error);
@@ -107,7 +101,7 @@ function applySettingsToUI(settings) {
 function updatePreBreakTimingVisibility() {
   const preBreakEnabled = document.getElementById("pre-break").checked;
   const timingCard = document.getElementById("pre-break-timing-card");
-  
+
   if (timingCard) {
     timingCard.style.display = preBreakEnabled ? 'block' : 'none';
   }
@@ -144,7 +138,7 @@ function formatTimeInput(input, maxValue) {
 // Debug functions
 function debugLog(message) {
   console.log(`[DEBUG] ${message}`);
-  
+
   const output = document.getElementById('debug-output');
   if (output) {
     const timestamp = new Date().toLocaleTimeString();
@@ -283,7 +277,7 @@ async function debugClearSettings() {
     if (confirm('Are you sure you want to clear all settings? This cannot be undone.')) {
       await invoke('save_settings', { settings: defaultSettings });
       debugLog('Settings cleared and reset to defaults');
-      
+
       applySettingsToUI(defaultSettings);
       debugLog('UI reset to default values');
     } else {
@@ -297,29 +291,29 @@ async function debugClearSettings() {
 async function debugTestSequence() {
   try {
     debugLog('=== STARTING FULL TEST SEQUENCE ===');
-    
+
     debugLog('1. Testing settings persistence...');
     await saveSettings();
     await loadSettings();
     debugLog('Settings test completed');
-    
+
     debugLog('2. Testing system features...');
     await debugMeetingCheck();
     await debugBrowserMeetingCheck();
     await debugAutostartCheck();
     await debugMediaPause();
-    
+
     debugLog('3. Testing notification windows...');
     await debugPreBreak();
     await new Promise(resolve => setTimeout(resolve, 2000));
     await debugCloseWindow('pre_break');
-    
+
     await debugNotify();
     await new Promise(resolve => setTimeout(resolve, 2000));
     await debugCloseWindow('notify');
-    
+
     debugLog('=== FULL TEST SEQUENCE COMPLETED ===');
-    
+
   } catch (error) {
     debugLog(`Error in test sequence: ${error}`);
   }
@@ -355,41 +349,41 @@ function debugHelp() {
 window.addEventListener("DOMContentLoaded", async () => {
   // Initialize tabs
   initTabs();
-  
+
   // Load and apply saved settings
   const savedSettings = await loadSettings();
   applySettingsToUI(savedSettings);
-  
+
   // Settings form
   const settingsInputs = [
-    "auto-pause", "meeting-detect", "pre-break", "break-chime", "recurring"
+    "auto-pause", "meeting-detect", "pre-break", "break-chime"
   ];
-  
+
   settingsInputs.forEach(id => {
     const element = document.getElementById(id);
     if (element) {
       element.addEventListener('change', saveSettings);
     }
   });
-  
+
   // Autostart toggle
   document.getElementById("autostart").addEventListener('change', async (e) => {
     await handleAutostartToggle(e.target.checked);
     await saveSettings();
   });
-  
+
   // Pre-break toggle
   document.getElementById("pre-break").addEventListener('change', () => {
     updatePreBreakTimingVisibility();
     saveSettings();
   });
-  
+
   // Time input validation
   const timeInputs = [
     { element: document.getElementById("pre-break-minutes"), max: 10 },
     { element: document.getElementById("pre-break-seconds"), max: 59 }
   ];
-  
+
   timeInputs.forEach(({ element, max }) => {
     element.addEventListener('blur', () => {
       formatTimeInput(element, max);
@@ -401,7 +395,7 @@ window.addEventListener("DOMContentLoaded", async () => {
       }
     });
   });
-  
+
   // Debug event listeners
   document.getElementById('debug-force-break').addEventListener('click', debugForceBreak);
   document.getElementById('debug-pre-break').addEventListener('click', debugPreBreak);
@@ -425,10 +419,10 @@ window.addEventListener("DOMContentLoaded", async () => {
   document.getElementById('debug-close-notify').addEventListener('click', () => debugCloseWindow('notify'));
   document.getElementById('debug-close-prebreak').addEventListener('click', () => debugCloseWindow('pre_break'));
   document.getElementById('debug-test-sequence').addEventListener('click', debugTestSequence);
-  
+
   document.getElementById('debug-help').addEventListener('click', debugHelp);
   document.getElementById('debug-clear').addEventListener('click', debugClear);
-  
+
   // Check autostart status on startup
   try {
     const isEnabled = await invoke('is_autostart_enabled');
@@ -439,7 +433,7 @@ window.addEventListener("DOMContentLoaded", async () => {
   } catch (error) {
     console.error('Failed to check autostart status:', error);
   }
-  
+
   debugLog('Break Reminder Pro settings page initialized successfully');
   console.log('Break Reminder Pro settings loaded successfully!');
 });

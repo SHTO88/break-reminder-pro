@@ -135,6 +135,20 @@
       // Skip break function
       async function skipBreak() {
         try {
+          // Show immediate feedback
+          const container = document.getElementById('pre-break-container');
+          if (container) {
+            container.innerHTML = `
+              <div style="text-align: center; padding: 12px; background: #ffe21c; border-radius: 6px;">
+                <div style="font-size: 14px; font-weight: 600; color: #222;">⏭️ Break Skipped</div>
+                <div style="font-size: 11px; color: #666; margin-top: 2px;">Checking next session...</div>
+              </div>
+            `;
+          }
+          
+          // Small delay to show the message
+          await new Promise(resolve => setTimeout(resolve, 600));
+          
           const { invoke } = window.__TAURI__.core;
           await invoke('skip_break');
           await closeWindow();
@@ -159,16 +173,9 @@
       
       async function loadPosition() {
         try {
-          const savedPosition = localStorage.getItem('preBreakPosition');
-          if (savedPosition) {
-            const position = JSON.parse(savedPosition);
-            const { getCurrentWindow } = window.__TAURI__.window;
-            const window = getCurrentWindow();
-            await window.setPosition(position);
-          } else {
-            // Default to bottom center
-            await setDefaultPosition();
-          }
+          // Always position at bottom center for pre-break notifications
+          console.log('🎯 Positioning pre-break at bottom center (ignoring saved position)');
+          await setDefaultPosition();
         } catch (error) {
           console.error('Error loading position:', error);
           await setDefaultPosition();
@@ -205,7 +212,8 @@
           const x = Math.floor((screenWidth - size.width) / 2);
           const y = screenHeight - size.height - 120; // 120px from bottom for better visibility
           
-          console.log(`Positioning window at: (${x}, ${y})`);
+          console.log(`🎯 Positioning pre-break window at BOTTOM CENTER: (${x}, ${y})`);
+          console.log(`📍 Screen: ${screenWidth}x${screenHeight}, Window: ${size.width}x${size.height}`);
           await window.setPosition({ x, y });
           
           // Ensure window is visible and focused properly
