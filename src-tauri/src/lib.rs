@@ -126,28 +126,75 @@ fn notify_window(app_handle: tauri::AppHandle, duration: Option<u32>) -> Result<
     let handle = app_handle.clone();
     std::thread::spawn(move || {
         println!("📂 Attempting to load: {}", url);
+        // Window dimensions
+        let window_width = 480.0;
+        let window_height = 320.0;
+
+        // Get screen dimensions to position at center
+        let (screen_width, screen_height) = match handle.primary_monitor() {
+            Ok(Some(monitor)) => {
+                let size = monitor.size();
+                println!("📺 Monitor detected for notify window: {}x{}", size.width, size.height);
+                (size.width as f64, size.height as f64)
+            }
+            _ => {
+                println!("⚠️ Could not get monitor info for notify window, using default screen size");
+                (1920.0, 1080.0) // Default fallback
+            }
+        };
+
+        // Calculate center position
+        let x = (screen_width - window_width) / 2.0;
+        let y = (screen_height - window_height) / 2.0;
+
+        println!("🎯 Positioning notify window at CENTER: ({:.0}, {:.0}) on {:.0}x{:.0} screen", x, y, screen_width, screen_height);
+        println!("📏 Notify window size: {:.0}x{:.0}", window_width, window_height);
+
         match WebviewWindowBuilder::new(&handle, "notify", WebviewUrl::App(url.into()))
-            .title("Break Notification")
+            .title("Break Time - Break Reminder Pro")
             .always_on_top(true)
-            .decorations(false)
+            .decorations(true) // Enable native title bar with minimize/close buttons
             .resizable(false)
-            .inner_size(480.0, 320.0) // Optimized size for notification content
-            .position(100.0, 100.0)
+            .inner_size(window_width, window_height + 30.0) // Add height for title bar
+            .position(x, y - 15.0) // Adjust position for title bar
             .focused(true)
-            .visible(true)
+            .visible(false) // Start hidden, show after positioning
             .transparent(false)
             .shadow(true)
+            .minimizable(true) // Allow minimize
+            .maximizable(false) // Disable maximize
+            .closable(true) // Allow close
             .build()
         {
             Ok(window) => {
                 println!("✅ Notify window created successfully!");
                 println!("🎯 Window label: {}", window.label());
                 println!("📋 Expected content: Blue notification with countdown");
+                println!("📍 Size: {}x{}", window_width, window_height);
 
-                // Try to inject some debugging JavaScript after a delay
-                std::thread::sleep(std::time::Duration::from_millis(500));
+                // Ensure position is set correctly and show window
+                std::thread::sleep(std::time::Duration::from_millis(100));
+                
+                // Double-check position and show window
+                if let Err(e) = window.set_position(tauri::Position::Physical(tauri::PhysicalPosition { x: x as i32, y: y as i32 })) {
+                    println!("⚠️ Failed to set notify window position: {}", e);
+                }
+                
+                if let Err(e) = window.show() {
+                    println!("⚠️ Failed to show notify window: {}", e);
+                }
+                
+                if let Err(e) = window.set_focus() {
+                    println!("⚠️ Failed to focus notify window: {}", e);
+                }
+
+                // Inject JavaScript to confirm window is ready and positioned
+                std::thread::sleep(std::time::Duration::from_millis(300));
                 let debug_js = format!(
-                    "console.log('🔥 Notify window JavaScript executed!'); console.log('🔗 Current URL:', window.location.href); console.log('⏰ Duration should be {} seconds');",
+                    "console.log('🔥 Notify window positioned by Rust at ({:.0}, {:.0})'); \
+                     window.RUST_POSITIONED = true; \
+                     console.log('⏰ Duration: {} seconds');",
+                    x, y,
                     break_duration
                 );
                 let _ = window.eval(&debug_js);
