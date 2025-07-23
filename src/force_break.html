@@ -398,12 +398,18 @@
       console.log('Early return button:', earlyReturnVisible ? 'visible' : 'hidden');
     }
     
-    async function endBreak() {
+    async function endBreak(isEarlyReturn = false) {
       if (timerInterval) {
         clearInterval(timerInterval);
       }
       
       try {
+        // If this is an early return (user clicked button), notify main window
+        if (isEarlyReturn) {
+          console.log('🏃 Early return detected - notifying main window');
+          await invoke('break_ended_early');
+        }
+        
         await invoke('close_window', { label: 'force_break' });
       } catch (error) {
         console.error('Error closing window:', error);
@@ -454,7 +460,7 @@
       
       if (userAnswer === currentAnswer) {
         hideMathModal();
-        endBreak();
+        endBreak(true); // Pass true to indicate this is an early return
       } else {
         mathError.classList.remove('hidden');
         mathInput.value = '';
@@ -527,6 +533,19 @@
     
     document.addEventListener('contextmenu', (e) => e.preventDefault());
     document.addEventListener('selectstart', (e) => e.preventDefault());
+    
+    // Handle window close events
+    window.addEventListener('beforeunload', async (e) => {
+      // If timer is still running, this is an early return
+      if (currentSeconds > 0) {
+        console.log('🏃 Window closing early with', currentSeconds, 'seconds remaining');
+        try {
+          await invoke('break_ended_early');
+        } catch (error) {
+          console.error('Error notifying early return:', error);
+        }
+      }
+    });
     
     // Initialize
     function init() {

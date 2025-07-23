@@ -545,15 +545,29 @@ function handleBreakSkipped() {
 // Handle early return from break (when user closes break window early)
 function handleEarlyBreakReturn() {
   console.log('🏃 User returned early from break');
+  console.log('🔧 Current timer settings:', currentTimerSettings);
+  console.log('🔧 Recurring enabled:', currentTimerSettings?.recurring);
+  console.log('🔧 Timer currently running:', isTimerRunning);
+  
+  // Stop any currently running timer first
+  if (isTimerRunning) {
+    console.log('⏹️ Stopping current timer');
+    if (timerInterval) {
+      clearInterval(timerInterval);
+      timerInterval = null;
+    }
+    isTimerRunning = false;
+    isTimerPaused = false;
+  }
   
   // Clear the existing recurring timeout since user returned early
   if (recurringTimeout) {
+    console.log('⏰ Clearing existing recurring timeout');
     clearTimeout(recurringTimeout);
     recurringTimeout = null;
   }
   
   // If recurring is enabled, start the next timer immediately
-  console.log('DEBUG: currentTimerSettings:', currentTimerSettings);
   if (currentTimerSettings && currentTimerSettings.recurring) {
     console.log('🔄 Starting next timer immediately due to early return');
     
@@ -566,14 +580,22 @@ function handleEarlyBreakReturn() {
     // Start immediately with minimal delay
     setTimeout(async () => {
       const breakTimerSeconds = getBreakTimerValue();
+      console.log('🚀 Starting new timer with', breakTimerSeconds, 'seconds');
       await startTimer(breakTimerSeconds);
     }, 500); // Minimal delay just to show the message
   } else {
     // If recurring is not enabled, show that break session is complete
+    console.log('✅ Recurring not enabled, finishing session');
     const statusElement = document.getElementById('timer-status');
     if (statusElement) {
       statusElement.textContent = '✅ Break completed early - Timer session finished';
     }
+    
+    // Clear settings and reset UI state
+    currentTimerSettings = null;
+    updateTimerDisplay();
+    updateTimerControls();
+    updatePanelVisibility();
   }
 }
 
@@ -689,6 +711,12 @@ window.addEventListener("DOMContentLoaded", async () => {
   // Make functions available globally for Rust to call
   window.handleBreakSkipped = handleBreakSkipped;
   window.handleEarlyBreakReturn = handleEarlyBreakReturn;
+  
+  // Debug: Log when functions are made available
+  console.log('✅ Global functions registered:', {
+    handleBreakSkipped: typeof window.handleBreakSkipped,
+    handleEarlyBreakReturn: typeof window.handleEarlyBreakReturn
+  });
   
   console.log('Break Reminder Pro main page loaded successfully!');
 });
