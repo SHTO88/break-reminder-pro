@@ -253,8 +253,20 @@ fn lock_screen() -> Result<(), String> {
 fn control_media(action: &str) -> Result<(), String> {
     use enigo::{Enigo, Key, KeyboardControllable};
     let mut enigo = Enigo::new();
+    
+    println!("🎵 Media control requested: {}", action);
+    
     match action {
-        "pause" | "playpause" => {
+        "pause" => {
+            // Use MediaStop instead of MediaPlayPause to avoid toggle behavior
+            // MediaStop will stop playing media and do nothing if already stopped
+            println!("🛑 Sending MediaStop key (safer than toggle)");
+            enigo.key_click(Key::MediaStop);
+            Ok(())
+        }
+        "playpause" => {
+            // Keep the toggle behavior for explicit play/pause requests
+            println!("⏯️ Sending MediaPlayPause key (toggle)");
             enigo.key_click(Key::MediaPlayPause);
             Ok(())
         }
