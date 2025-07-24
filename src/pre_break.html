@@ -244,7 +244,28 @@
       });
     }
 
-    let seconds = 30; // Default 30 seconds
+    // Get remaining seconds from URL parameter
+    function getRemainingSeconds() {
+      try {
+        const urlParams = new URLSearchParams(window.location.search);
+        const seconds = urlParams.get('seconds');
+        console.log('Pre-break URL params:', window.location.search);
+        console.log('Remaining seconds from URL:', seconds);
+        
+        if (seconds && !isNaN(parseInt(seconds))) {
+          const secondsInt = parseInt(seconds);
+          console.log('Using remaining seconds from URL:', secondsInt);
+          return secondsInt;
+        }
+      } catch (error) {
+        console.error('Error getting remaining seconds:', error);
+      }
+      
+      console.log('Using default remaining seconds: 30');
+      return 30; // Default fallback
+    }
+
+    let seconds = getRemainingSeconds();
     function updateCountdown() {
       const min = Math.floor(seconds / 60)
         .toString()

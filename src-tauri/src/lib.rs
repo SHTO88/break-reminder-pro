@@ -60,11 +60,12 @@ fn notify_window(app_handle: tauri::AppHandle, duration: Option<u32>) -> Result<
 }
 
 #[tauri::command]
-fn pre_break_notification_window(app_handle: tauri::AppHandle) -> Result<(), String> {
-    println!("⏰ Creating pre-break window...");
+fn pre_break_notification_window(app_handle: tauri::AppHandle, remaining_seconds: Option<u32>) -> Result<(), String> {
+    let seconds = remaining_seconds.unwrap_or(30);
+    println!("⏰ Creating pre-break window with {} seconds remaining...", seconds);
 
     WindowManager::close_existing_window(&app_handle, "pre_break");
-    let config = WindowConfig::pre_break(&app_handle);
+    let config = WindowConfig::pre_break(&app_handle, seconds);
     WindowManager::create_window(app_handle, config)
 }
 

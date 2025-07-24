@@ -247,14 +247,14 @@ impl WindowConfig {
         }
     }
 
-    pub fn pre_break(app_handle: &AppHandle) -> Self {
+    pub fn pre_break(app_handle: &AppHandle, remaining_seconds: u32) -> Self {
         let window_width = 220.0;
         let window_height = 90.0;
         let position = WindowManager::get_bottom_center_position(app_handle, window_width, window_height, 120.0);
         
         Self {
             label: "pre_break".to_string(),
-            url: "pre_break.html".to_string(),
+            url: format!("pre_break.html?seconds={}", remaining_seconds),
             title: "Pre-Break Warning".to_string(),
             width: window_width,
             height: window_height,

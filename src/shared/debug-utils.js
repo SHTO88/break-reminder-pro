@@ -50,7 +50,7 @@ export class DebugUtils {
   static async testPreBreak() {
     try {
       this.log('Triggering pre-break notification...');
-      await invoke("pre_break_notification_window");
+      await invoke("pre_break_notification_window", { remainingSeconds: 30 });
       this.log('✅ Pre-break notification window created');
     } catch (error) {
       this.log(`❌ Error triggering pre-break: ${error}`);

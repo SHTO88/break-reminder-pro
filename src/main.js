@@ -336,7 +336,7 @@ async function checkPreBreakTrigger() {
       console.log(`🚨 PRE-BREAK TRIGGER! ${preBreakTimingSeconds} seconds remaining (should show at bottom center)`);
       preBreakTriggered = true;
       
-      await invoke("pre_break_notification_window");
+      await invoke("pre_break_notification_window", { remainingSeconds: timerSeconds });
       
       const minutes = Math.floor(preBreakTimingSeconds / 60);
       const seconds = preBreakTimingSeconds % 60;
