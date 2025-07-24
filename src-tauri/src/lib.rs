@@ -1,6 +1,8 @@
 use serde::{Deserialize, Serialize};
 use std::fs;
-use tauri::{Manager, WebviewUrl, WebviewWindowBuilder};
+use tauri::{Manager, WebviewUrl, WebviewWindowBuilder, AppHandle, WindowEvent};
+use tauri::menu::{Menu, MenuItem};
+use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 
 // For autostart plugin
 use tauri_plugin_autostart::{MacosLauncher, ManagerExt};
@@ -333,6 +335,32 @@ async fn is_autostart_enabled(app_handle: tauri::AppHandle) -> Result<bool, Stri
     autostart_manager
         .is_enabled()
         .map_err(|e| format!("Failed to check autostart status: {}", e))
+}
+
+#[tauri::command]
+async fn hide_to_tray(app_handle: tauri::AppHandle) -> Result<(), String> {
+    if let Some(window) = app_handle.get_webview_window("main") {
+        window.hide().map_err(|e| format!("Failed to hide window: {}", e))?;
+        println!("🫥 Main window hidden to system tray");
+    }
+    Ok(())
+}
+
+#[tauri::command]
+async fn show_from_tray(app_handle: tauri::AppHandle) -> Result<(), String> {
+    if let Some(window) = app_handle.get_webview_window("main") {
+        window.show().map_err(|e| format!("Failed to show window: {}", e))?;
+        window.set_focus().map_err(|e| format!("Failed to focus window: {}", e))?;
+        println!("👁️ Main window restored from system tray");
+    }
+    Ok(())
+}
+
+#[tauri::command]
+async fn quit_app(app_handle: tauri::AppHandle) -> Result<(), String> {
+    println!("🚪 Quitting application completely");
+    app_handle.exit(0);
+    Ok(())
 }
 
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
@@ -880,6 +908,64 @@ fn show_index_window(app_handle: tauri::AppHandle) -> Result<(), String> {
     Ok(())
 }
 
+fn setup_system_tray(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
+    let quit_item = MenuItem::with_id(app, "quit", "Quit Break Reminder Pro", true, None::<&str>)?;
+    let show_item = MenuItem::with_id(app, "show", "Show Window", true, None::<&str>)?;
+    let hide_item = MenuItem::with_id(app, "hide", "Hide to Tray", true, None::<&str>)?;
+    
+    let menu = Menu::with_items(app, &[&show_item, &hide_item, &quit_item])?;
+    
+    let _tray = TrayIconBuilder::with_id("main-tray")
+        .tooltip("Break Reminder Pro - Click to toggle window")
+        .icon(app.default_window_icon().unwrap().clone())
+        .menu(&menu)
+        .show_menu_on_left_click(false)
+        .on_menu_event(move |app, event| match event.id.as_ref() {
+            "quit" => {
+                println!("🚪 Quit selected from tray menu");
+                app.exit(0);
+            }
+            "show" => {
+                println!("👁️ Show selected from tray menu");
+                if let Some(window) = app.get_webview_window("main") {
+                    let _ = window.show();
+                    let _ = window.set_focus();
+                }
+            }
+            "hide" => {
+                println!("🫥 Hide selected from tray menu");
+                if let Some(window) = app.get_webview_window("main") {
+                    let _ = window.hide();
+                }
+            }
+            _ => {}
+        })
+        .on_tray_icon_event(|tray, event| {
+            if let TrayIconEvent::Click {
+                button: MouseButton::Left,
+                button_state: MouseButtonState::Up,
+                ..
+            } = event
+            {
+                let app = tray.app_handle();
+                if let Some(window) = app.get_webview_window("main") {
+                    if window.is_visible().unwrap_or(false) {
+                        let _ = window.hide();
+                        println!("🫥 Main window hidden via tray click");
+                    } else {
+                        let _ = window.show();
+                        let _ = window.set_focus();
+                        println!("👁️ Main window shown via tray click");
+                    }
+                }
+            }
+        })
+        .build(app)?;
+    
+    println!("✅ System tray initialized successfully");
+    Ok(())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -888,6 +974,31 @@ pub fn run() {
             MacosLauncher::LaunchAgent,
             None,
         ))
+        .setup(|app| {
+            // Setup system tray
+            if let Err(e) = setup_system_tray(app.handle()) {
+                println!("❌ Failed to setup system tray: {}", e);
+            }
+            
+            // Handle window close events to hide to tray instead of closing
+            if let Some(window) = app.get_webview_window("main") {
+                let app_handle = app.handle().clone();
+                window.on_window_event(move |event| {
+                    if let WindowEvent::CloseRequested { api, .. } = event {
+                        // Prevent the window from closing
+                        api.prevent_close();
+                        
+                        // Hide the window instead
+                        if let Some(window) = app_handle.get_webview_window("main") {
+                            let _ = window.hide();
+                            println!("🫥 Main window hidden to tray instead of closing");
+                        }
+                    }
+                });
+            }
+            
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             greet,
             lock_screen,
@@ -906,6 +1017,9 @@ pub fn run() {
             enable_autostart,
             disable_autostart,
             is_autostart_enabled,
+            hide_to_tray,
+            show_from_tray,
+            quit_app,
             save_settings,
             load_settings,
             debug_test_window,

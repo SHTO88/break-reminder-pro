@@ -650,6 +650,39 @@ function formatTimeInput(input, maxValue) {
   }
 }
 
+// System tray functions
+async function hideToTray() {
+  try {
+    await invoke('hide_to_tray');
+    console.log('🫥 Application hidden to system tray');
+  } catch (error) {
+    console.error('Failed to hide to tray:', error);
+  }
+}
+
+async function showFromTray() {
+  try {
+    await invoke('show_from_tray');
+    console.log('👁️ Application restored from system tray');
+  } catch (error) {
+    console.error('Failed to show from tray:', error);
+  }
+}
+
+async function quitApp() {
+  try {
+    await invoke('quit_app');
+    console.log('🚪 Application quit completely');
+  } catch (error) {
+    console.error('Failed to quit app:', error);
+  }
+}
+
+// Make tray functions available globally
+window.hideToTray = hideToTray;
+window.showFromTray = showFromTray;
+window.quitApp = quitApp;
+
 // Initialize application
 window.addEventListener("DOMContentLoaded", async () => {
   // Load and apply saved settings
