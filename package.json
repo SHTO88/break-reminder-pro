@@ -1,7 +1,29 @@
 {
-  "name": "break-reminder-pro-app",
-  "private": true,
-  "version": "0.1.0",
+  "name": "break-reminder-pro",
+  "private": false,
+  "version": "1.0.0",
+  "description": "Privacy-respecting, open source break reminder for Windows. Helps maintain health and productivity with customizable break intervals, smart meeting detection, and system tray integration. No ads, no tracking, no data collection.",
+  "author": "Break Reminder Pro Contributors",
+  "license": "MIT",
+  "homepage": "https://github.com/SHTO88/break-reminder-pro#readme",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/SHTO88/break-reminder-pro.git"
+  },
+  "bugs": {
+    "url": "https://github.com/SHTO88/break-reminder-pro/issues"
+  },
+  "keywords": [
+    "break-reminder",
+    "productivity",
+    "health",
+    "windows",
+    "tauri",
+    "rust",
+    "open-source",
+    "privacy",
+    "desktop-app"
+  ],
   "type": "module",
   "scripts": {
     "tauri": "tauri",

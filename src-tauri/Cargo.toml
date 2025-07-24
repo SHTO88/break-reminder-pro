@@ -1,9 +1,15 @@
 [package]
 name = "break-reminder-pro-app"
-version = "0.1.0"
-description = "A Tauri App"
-authors = ["you"]
+version = "1.0.0"
+description = "Privacy-respecting, open source break reminder for Windows. Helps maintain health and productivity with customizable break intervals, smart meeting detection, and system tray integration. No ads, no tracking, no data collection."
+authors = ["Break Reminder Pro Contributors"]
 edition = "2021"
+license = "MIT"
+repository = "https://github.com/SHTO88/break-reminder-pro"
+homepage = "https://github.com/SHTO88/break-reminder-pro"
+documentation = "https://github.com/SHTO88/break-reminder-pro#readme"
+keywords = ["break", "reminder", "productivity", "health", "windows"]
+categories = ["gui", "utility"]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 

@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "break-reminder-pro-app",
-  "version": "0.1.0",
-  "identifier": "com.break-reminder-pro-app.app",
+  "productName": "Break Reminder Pro",
+  "version": "1.0.0",
+  "identifier": "com.breakreminderpro.app",
   "build": {
     "frontendDist": "../src"
   },
@@ -28,6 +28,16 @@
       "icons/128x128@2x.png",
       "icons/icon.icns",
       "icons/icon.ico"
-    ]
+    ],
+    "publisher": "Break Reminder Pro",
+    "copyright": "Copyright © 2024 Break Reminder Pro. All rights reserved.",
+    "category": "Productivity",
+    "shortDescription": "Privacy-respecting, open source break reminder for Windows",
+    "longDescription": "Break Reminder Pro is a completely free, open source, and privacy-respecting desktop application designed to help you maintain your health and productivity while working. Features customizable break intervals, smart meeting detection, system tray integration, and multiple break modes. No ads, no tracking, no data collection.",
+    "windows": {
+      "certificateThumbprint": null,
+      "digestAlgorithm": "sha256",
+      "timestampUrl": ""
+    }
   }
 }
