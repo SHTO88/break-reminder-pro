@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="512" height="512" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <!-- Modern gradient -->
+    <linearGradient id="modernBg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#667EEA"/>
+      <stop offset="100%" style="stop-color:#764BA2"/>
+    </linearGradient>
+    
+    <!-- Eye gradient -->
+    <radialGradient id="eyeBg" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" style="stop-color:#FFFFFF"/>
+      <stop offset="100%" style="stop-color:#F7FAFC"/>
+    </radialGradient>
+    
+    <!-- Iris gradient -->
+    <radialGradient id="irisGrad" cx="40%" cy="40%" r="60%">
+      <stop offset="0%" style="stop-color:#4FD1C7"/>
+      <stop offset="100%" style="stop-color:#06B6D4"/>
+    </radialGradient>
+  </defs>
+  
+  <!-- Background with rounded square feel -->
+  <rect x="36" y="36" width="440" height="440" rx="80" fill="url(#modernBg)"/>
+  
+  <!-- Main eye container -->
+  <circle cx="256" cy="220" r="100" fill="url(#eyeBg)" stroke="#E2E8F0" stroke-width="3"/>
+  
+  <!-- Iris -->
+  <circle cx="256" cy="220" r="40" fill="url(#irisGrad)"/>
+  
+  <!-- Pupil -->
+  <circle cx="256" cy="220" r="18" fill="#1A202C"/>
+  
+  <!-- Multiple highlights for depth -->
+  <circle cx="248" cy="212" r="6" fill="#FFFFFF" opacity="0.9"/>
+  <circle cx="250" cy="208" r="3" fill="#FFFFFF"/>
+  <circle cx="268" cy="228" r="2" fill="#FFFFFF" opacity="0.5"/>
+  
+  <!-- Stylized eyelashes/lids -->
+  <path d="M 156 220 Q 206 200 256 220 Q 306 200 356 220" stroke="#CBD5E1" stroke-width="3" fill="none" stroke-linecap="round"/>
+  
+  <!-- Happy expression -->
+  <path d="M 200 350 Q 256 390 312 350" stroke="#FFFFFF" stroke-width="10" fill="none" stroke-linecap="round" opacity="0.9"/>
+  
+  <!-- Modern pause icon -->
+  <g transform="translate(256, 400)">
+    <rect x="-20" y="-15" width="12" height="30" rx="6" fill="#FFFFFF" opacity="0.9"/>
+    <rect x="8" y="-15" width="12" height="30" rx="6" fill="#FFFFFF" opacity="0.9"/>
+  </g>
+  
+  <!-- Decorative elements - health/wellness theme -->
+  <g opacity="0.4">
+    <!-- Wellness dots -->
+    <circle cx="120" cy="120" r="8" fill="#FFFFFF"/>
+    <circle cx="392" cy="120" r="8" fill="#FFFFFF"/>
+    <circle cx="120" cy="392" r="8" fill="#FFFFFF"/>
+    <circle cx="392" cy="392" r="8" fill="#FFFFFF"/>
+    
+    <!-- Connection lines -->
+    <line x1="120" y1="120" x2="392" y2="120" stroke="#FFFFFF" stroke-width="2"/>
+    <line x1="392" y1="120" x2="392" y2="392" stroke="#FFFFFF" stroke-width="2"/>
+    <line x1="392" y1="392" x2="120" y2="392" stroke="#FFFFFF" stroke-width="2"/>
+    <line x1="120" y1="392" x2="120" y2="120" stroke="#FFFFFF" stroke-width="2"/>
+  </g>
+</svg>
