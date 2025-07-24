@@ -68,6 +68,7 @@
 - **Auto-start** - Launches with Windows (optional)
 - **Hide to tray** - Minimize instead of closing
 - **Native feel** - Follows Windows design guidelines
+- **Automatic updates** - Get notified when new versions are available
 
 ## Perfect For
 
@@ -225,6 +226,13 @@ break-reminder-pro/
 - `enigo` - Media control via keyboard simulation
 - `sysinfo` - Process detection for meeting awareness
 - `winapi` - Windows-specific APIs
+
+### Update System
+- **Automatic checking** - Checks for updates daily (can be disabled)
+- **Manual updates** - Check for updates anytime in Settings
+- **GitHub releases** - Downloads from official GitHub releases
+- **User control** - You decide when to download and install
+- **No auto-install** - Manual download for security
 
 ### Contributing
 See [CONTRIBUTING.md](CONTRIBUTING.md) for development guidelines, code style, and how to submit changes.

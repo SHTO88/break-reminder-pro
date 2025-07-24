@@ -30,3 +30,12 @@ This list tracks the development progress based on the project's PRD.
 - [x] Integrate `tauri-plugin-autostart` for auto-start functionality
 - [x] Implement end-of-break audio chime
 - [x] Final testing and packaging into a Windows installer (.msi)
+
+**Phase 5: Update System**
+
+- [x] Implement automatic update checking system
+- [x] Create update notification window with modern UI
+- [x] Add manual update check functionality in settings
+- [x] Integrate GitHub Actions for automatic release creation
+- [x] Add update system testing and debugging tools
+- [x] Document update system implementation and usage

@@ -1,6 +1,8 @@
 import { settingsManager, DEFAULT_SETTINGS } from './shared/settings.js';
 import { TimerUtils, CountdownTimer } from './shared/timer.js';
 import { UIUtils } from './shared/ui-utils.js';
+import { mediaManager } from './shared/media-manager.js';
+import { updateManager } from './shared/update-manager.js';
 
 const { invoke } = window.__TAURI__.core;
 
@@ -707,5 +709,18 @@ window.addEventListener("DOMContentLoaded", async () => {
     handleEarlyBreakReturn: typeof window.handleEarlyBreakReturn
   });
   
+  // Check for updates on startup (with delay to not interfere with app loading)
+  setTimeout(() => {
+    updateManager.checkForUpdates().then(result => {
+      if (result.hasUpdate) {
+        console.log('🎉 Update available on startup:', result.latestVersion);
+      } else {
+        console.log('✅ App is up to date on startup');
+      }
+    }).catch(error => {
+      console.error('❌ Startup update check failed:', error);
+    });
+  }, 5000); // 5 second delay after app loads
+
   console.log('Break Reminder Pro main page loaded successfully!');
 });

@@ -121,6 +121,57 @@ async fn quit_app(app_handle: tauri::AppHandle) -> Result<(), String> {
     Ok(())
 }
 
+#[tauri::command]
+fn get_app_version() -> String {
+    env!("CARGO_PKG_VERSION").to_string()
+}
+
+#[tauri::command]
+async fn open_url(url: String) -> Result<(), String> {
+    println!("🌐 Opening URL: {}", url);
+    
+    #[cfg(target_os = "windows")]
+    {
+        std::process::Command::new("cmd")
+            .args(["/c", "start", &url])
+            .spawn()
+            .map_err(|e| format!("Failed to open URL: {}", e))?;
+    }
+    
+    #[cfg(target_os = "macos")]
+    {
+        std::process::Command::new("open")
+            .arg(&url)
+            .spawn()
+            .map_err(|e| format!("Failed to open URL: {}", e))?;
+    }
+    
+    #[cfg(target_os = "linux")]
+    {
+        std::process::Command::new("xdg-open")
+            .arg(&url)
+            .spawn()
+            .map_err(|e| format!("Failed to open URL: {}", e))?;
+    }
+    
+    Ok(())
+}
+
+#[tauri::command]
+fn show_update_notification(
+    app_handle: tauri::AppHandle,
+    version: String,
+    notes: String,
+    download_url: String,
+    published_at: String,
+) -> Result<(), String> {
+    println!("🔔 Showing update notification for version: {}", version);
+
+    WindowManager::close_existing_window(&app_handle, "update_notification");
+    let config = WindowConfig::update_notification(&app_handle, version, notes, download_url, published_at);
+    WindowManager::create_window(app_handle, config)
+}
+
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
 
 #[tauri::command]
@@ -168,6 +219,21 @@ fn control_media(action: &str) -> Result<(), String> {
         }
         _ => Err("Unsupported media action".to_string()),
     }
+}
+
+#[tauri::command]
+fn check_media_playing() -> Result<bool, String> {
+    println!("🎵 Checking if media is playing...");
+    
+    // Note: This is a simplified implementation
+    // In a real-world scenario, you might want to check specific media players
+    // or use Windows APIs to detect media playback state
+    
+    // For now, we'll return false as a safe default
+    // This function can be enhanced later to actually detect media playback
+    // using Windows Media Control APIs or by checking specific processes
+    
+    Ok(false)
 }
 
 #[tauri::command]
@@ -663,6 +729,7 @@ pub fn run() {
             greet,
             lock_screen,
             control_media,
+            check_media_playing,
             play_chime,
             is_meeting_active,
             check_browser_meeting_debug,
@@ -683,7 +750,10 @@ pub fn run() {
             save_settings,
             load_settings,
             debug_test_window,
-            show_index_window
+            show_index_window,
+            get_app_version,
+            open_url,
+            show_update_notification
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

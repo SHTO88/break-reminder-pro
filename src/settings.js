@@ -1,6 +1,7 @@
 import { settingsManager, DEFAULT_SETTINGS } from './shared/settings.js';
 import { UIUtils, TabManager } from './shared/ui-utils.js';
 import { DebugUtils } from './shared/debug-utils.js';
+import { updateManager } from './shared/update-manager.js';
 
 const { invoke } = window.__TAURI__.core;
 
@@ -43,7 +44,13 @@ function applySettingsToUI(settings) {
     };
 
     UIUtils.applySettingsToForm(settings, fieldMappings);
+    
+    // Apply update check setting
+    const updateCheckEnabled = updateManager.isUpdateCheckEnabled();
+    document.getElementById('auto-update-check').checked = updateCheckEnabled;
+    
     updatePreBreakTimingVisibility();
+    updateLastCheckInfo();
     console.log('Settings applied to UI:', settings);
   } catch (error) {
     console.error('Failed to apply settings to UI:', error);
@@ -53,6 +60,71 @@ function applySettingsToUI(settings) {
 function updatePreBreakTimingVisibility() {
   const preBreakEnabled = document.getElementById("pre-break").checked;
   UIUtils.toggleElementVisibility("pre-break-timing-card", preBreakEnabled);
+}
+
+// Update functions
+function updateLastCheckInfo() {
+  const lastCheckInfo = updateManager.getLastCheckInfo();
+  const element = document.getElementById('last-check-info');
+  
+  if (element) {
+    if (lastCheckInfo) {
+      element.textContent = `Last checked: ${lastCheckInfo.timeAgo}`;
+    } else {
+      element.textContent = 'Never checked for updates';
+    }
+  }
+}
+
+async function handleUpdateCheck() {
+  const button = document.getElementById('check-updates-btn');
+  const status = document.getElementById('update-status');
+  
+  if (!button || !status) return;
+  
+  // Update UI to show checking state
+  button.disabled = true;
+  button.innerHTML = '<span>🔄</span>Checking...';
+  status.textContent = 'Checking for updates...';
+  status.style.color = 'var(--warning)';
+  
+  try {
+    const result = await updateManager.checkForUpdatesManually();
+    
+    // Update last check info
+    updateLastCheckInfo();
+    
+    if (result.hasUpdate) {
+      status.textContent = `Update ${result.latestVersion} available!`;
+      status.style.color = 'var(--success)';
+    } else if (result.reason === 'up_to_date') {
+      status.textContent = 'You have the latest version!';
+      status.style.color = 'var(--success)';
+    } else if (result.reason === 'error') {
+      status.textContent = 'Failed to check for updates';
+      status.style.color = 'var(--danger)';
+    }
+    
+  } catch (error) {
+    console.error('Manual update check failed:', error);
+    status.textContent = 'Error checking for updates';
+    status.style.color = 'var(--danger)';
+  } finally {
+    // Reset button state
+    button.disabled = false;
+    button.innerHTML = '<span>🔍</span>Check for Updates';
+    
+    // Reset status after 5 seconds
+    setTimeout(() => {
+      status.textContent = 'Click to check for updates';
+      status.style.color = 'var(--text-muted)';
+    }, 5000);
+  }
+}
+
+function handleUpdateCheckToggle(enabled) {
+  updateManager.setUpdateCheckEnabled(enabled);
+  console.log(`Update checking ${enabled ? 'enabled' : 'disabled'}`);
 }
 
 // Autostart handling
@@ -108,6 +180,14 @@ window.addEventListener("DOMContentLoaded", async () => {
     }
   });
 
+  // Update check toggle
+  document.getElementById("auto-update-check").addEventListener('change', (e) => {
+    handleUpdateCheckToggle(e.target.checked);
+  });
+
+  // Manual update check button
+  document.getElementById("check-updates-btn").addEventListener('click', handleUpdateCheck);
+
   // Autostart toggle
   document.getElementById("autostart").addEventListener('change', async (e) => {
     await handleAutostartToggle(e.target.checked);
@@ -144,6 +224,7 @@ window.addEventListener("DOMContentLoaded", async () => {
     'debug-browser-meeting-check': () => DebugUtils.testBrowserMeetingCheck(),
     'debug-meeting-notification': () => DebugUtils.testMeetingNotification(),
     'debug-autostart-check': () => DebugUtils.testAutostartCheck(),
+    'debug-test-updates': () => DebugUtils.testUpdateCheck(),
     'debug-clear-settings': debugClearSettings,
     'debug-close-force': () => DebugUtils.closeWindow('force_break'),
     'debug-close-notify': () => DebugUtils.closeWindow('notify'),

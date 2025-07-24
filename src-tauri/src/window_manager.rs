@@ -1,4 +1,4 @@
-use tauri::{AppHandle, Manager, WebviewUrl, WebviewWindowBuilder, Position, PhysicalPosition};
+use tauri::{AppHandle, Manager, WebviewUrl, WebviewWindowBuilder};
 use std::thread;
 use std::time::Duration;
 
@@ -293,6 +293,46 @@ impl WindowConfig {
             maximized: false,
             transparent: true,
             shadow: false,
+            position: Some(position),
+        }
+    }
+
+    pub fn update_notification(
+        app_handle: &AppHandle,
+        version: String,
+        notes: String,
+        download_url: String,
+        published_at: String,
+    ) -> Self {
+        let window_width = 450.0;
+        let window_height = 300.0;
+        let position = WindowManager::get_screen_center_position(app_handle, window_width, window_height);
+        
+        // URL encode the parameters
+        let encoded_version = urlencoding::encode(&version);
+        let encoded_notes = urlencoding::encode(&notes);
+        let encoded_url = urlencoding::encode(&download_url);
+        let encoded_date = urlencoding::encode(&published_at);
+        
+        Self {
+            label: "update_notification".to_string(),
+            url: format!(
+                "update_notification.html?version={}&notes={}&url={}&date={}",
+                encoded_version, encoded_notes, encoded_url, encoded_date
+            ),
+            title: "Update Available".to_string(),
+            width: window_width,
+            height: window_height,
+            fullscreen: false,
+            always_on_top: true,
+            decorations: true,
+            resizable: false,
+            focused: true,
+            visible: false,
+            skip_taskbar: false,
+            maximized: false,
+            transparent: false,
+            shadow: true,
             position: Some(position),
         }
     }

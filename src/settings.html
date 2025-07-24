@@ -568,7 +568,6 @@
           </div>
           
           <div class="toggle-group">
-
             <label class="toggle-option">
               <input type="checkbox" id="autostart" />
               <span class="toggle-switch"></span>
@@ -577,6 +576,35 @@
                 <div class="toggle-desc">Launch Break Reminder Pro on system startup</div>
               </div>
             </label>
+            <label class="toggle-option">
+              <input type="checkbox" id="auto-update-check" />
+              <span class="toggle-switch"></span>
+              <div class="toggle-content">
+                <div class="toggle-title">Check for Updates</div>
+                <div class="toggle-desc">Automatically check for new versions daily</div>
+              </div>
+            </label>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <span class="card-icon">🔄</span>
+            <h3 class="card-title">Updates</h3>
+          </div>
+          
+          <div style="display: flex; gap: 1rem; align-items: center; margin-bottom: 1rem;">
+            <button type="button" id="check-updates-btn" class="btn btn-primary">
+              <span>🔍</span>
+              Check for Updates
+            </button>
+            <div id="update-status" style="color: var(--text-muted); font-size: 0.9rem;">
+              Click to check for updates
+            </div>
+          </div>
+          
+          <div id="last-check-info" style="color: var(--text-muted); font-size: 0.85rem;">
+            <!-- Last check info will be populated by JavaScript -->
           </div>
         </div>
       </div>
