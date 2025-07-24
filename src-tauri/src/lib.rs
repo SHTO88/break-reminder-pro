@@ -222,21 +222,6 @@ fn control_media(action: &str) -> Result<(), String> {
 }
 
 #[tauri::command]
-fn check_media_playing() -> Result<bool, String> {
-    println!("🎵 Checking if media is playing...");
-    
-    // Note: This is a simplified implementation
-    // In a real-world scenario, you might want to check specific media players
-    // or use Windows APIs to detect media playback state
-    
-    // For now, we'll return false as a safe default
-    // This function can be enhanced later to actually detect media playback
-    // using Windows Media Control APIs or by checking specific processes
-    
-    Ok(false)
-}
-
-#[tauri::command]
 fn play_chime() -> Result<(), String> {
     println!("🔔 Playing chime sound...");
 
@@ -729,7 +714,6 @@ pub fn run() {
             greet,
             lock_screen,
             control_media,
-            check_media_playing,
             play_chime,
             is_meeting_active,
             check_browser_meeting_debug,

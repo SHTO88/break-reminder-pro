@@ -1,7 +1,6 @@
 import { settingsManager, DEFAULT_SETTINGS } from './shared/settings.js';
 import { TimerUtils, CountdownTimer } from './shared/timer.js';
 import { UIUtils } from './shared/ui-utils.js';
-import { mediaManager } from './shared/media-manager.js';
 import { updateManager } from './shared/update-manager.js';
 
 const { invoke } = window.__TAURI__.core;
