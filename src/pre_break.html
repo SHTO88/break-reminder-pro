@@ -123,32 +123,20 @@
     </div>
     <div class="progress-bar" id="auto-hide-progress"></div>
   </div>
-  <script>
+  <script type="module">
+    import { WindowUtils, WindowPositionManager, AutoHideManager } from './shared/window-utils.js';
+    import { UIUtils } from './shared/ui-utils.js';
+
     console.log('Pre-break window HTML loaded successfully!');
     document.title = 'Pre-Break Warning - LOADED';
 
-    let autoHideTimer = null;
-    let progressTimer = null;
     let isDragging = false;
     let dragOffset = { x: 0, y: 0 };
-    let autoHideStartTime = null;
-    let autoHideDuration = 3000; // 3 seconds
-    let isAutoHidePaused = false;
+    let autoHideManager = null;
 
     // Close window function
     async function closeWindow() {
-      try {
-        const { invoke } = window.__TAURI__.core;
-        await invoke('close_window', { label: 'pre_break' });
-      } catch (error) {
-        console.error('Error closing window:', error);
-        try {
-          const { getCurrentWindow } = window.__TAURI__.window;
-          await getCurrentWindow().close();
-        } catch (fallbackError) {
-          console.error('Fallback close failed:', fallbackError);
-        }
-      }
+      await WindowUtils.closeWindow('pre_break');
     }
 
     // Skip break function
@@ -178,234 +166,58 @@
       }
     }
 
-    // Position management
-    async function savePosition() {
-      try {
-        const { getCurrentWindow } = window.__TAURI__.window;
-        const window = getCurrentWindow();
-        const position = await window.outerPosition();
-        localStorage.setItem('preBreakPosition', JSON.stringify(position));
-      } catch (error) {
-        console.error('Error saving position:', error);
-      }
-    }
+    // Make functions available globally for onclick handlers
+    window.skipBreak = skipBreak;
+    window.closeWindow = closeWindow;
 
+    // Position management using WindowPositionManager
+    const positionManager = new WindowPositionManager('preBreak');
+    
     async function loadPosition() {
-      try {
-        // Check if window was positioned by Rust
-        if (window.RUST_POSITIONED) {
-          console.log('🎯 Pre-break window already positioned by Rust - skipping JS positioning');
-          const { getCurrentWindow } = window.__TAURI__.window;
-          const currentWindow = getCurrentWindow();
-          await currentWindow.show();
-          await currentWindow.setAlwaysOnTop(true);
-          return;
-        }
-
-        console.log('🎯 Rust positioning not detected, using JavaScript fallback');
-        await setDefaultPosition();
-      } catch (error) {
-        console.error('Error in loadPosition:', error);
-        // Fallback to JavaScript positioning if anything fails
-        await setDefaultPosition();
-      }
+      await positionManager.positionWindow(WindowPositionManager.positionAtBottomCenter);
     }
 
-    async function setDefaultPosition() {
-      try {
-        const { getCurrentWindow } = window.__TAURI__.window;
-        const { invoke } = window.__TAURI__.core;
-        const window = getCurrentWindow();
-
-        // Wait a bit for window to be fully initialized
-        await new Promise(resolve => setTimeout(resolve, 100));
-
-        const size = await window.outerSize();
-
-        // Get actual screen dimensions from Tauri
-        let screenWidth, screenHeight;
-        try {
-          const [width, height] = await invoke('get_primary_monitor_size');
-          screenWidth = width;
-          screenHeight = height;
-        } catch (error) {
-          console.warn('Failed to get monitor size from Tauri, using screen API:', error);
-          screenWidth = screen.width;
-          screenHeight = screen.height;
-        }
-
-        console.log(`Screen dimensions: ${screenWidth}x${screenHeight}`);
-        console.log(`Window size: ${size.width}x${size.height}`);
-
-        // Position at bottom center with proper margins
-        const x = Math.floor((screenWidth - size.width) / 2);
-        const y = screenHeight - size.height - 120; // 120px from bottom for better visibility
-
-        console.log(`🎯 Positioning pre-break window at BOTTOM CENTER: (${x}, ${y})`);
-        console.log(`📍 Screen: ${screenWidth}x${screenHeight}, Window: ${size.width}x${size.height}`);
-        await window.setPosition({ x, y });
-
-        // Ensure window is visible and focused properly
-        await window.show();
-        await window.setAlwaysOnTop(true);
-
-      } catch (error) {
-        console.error('Error setting default position:', error);
-      }
+    async function savePosition() {
+      await positionManager.savePosition();
     }
 
     // Dragging functionality
     function initDragging() {
       const container = document.getElementById('pre-break-container');
-
-      container.addEventListener('mousedown', (e) => {
-        if (e.target.classList.contains('skip-btn')) return;
-        isDragging = true;
-        dragOffset.x = e.clientX;
-        dragOffset.y = e.clientY;
-        container.style.cursor = 'grabbing';
-
-        // Cancel auto-hide when starting to drag
-        cancelAutoHide();
-      });
-
-      document.addEventListener('mousemove', async (e) => {
-        if (!isDragging) return;
-
-        const deltaX = e.clientX - dragOffset.x;
-        const deltaY = e.clientY - dragOffset.y;
-
-        try {
-          const { getCurrentWindow } = window.__TAURI__.window;
-          const window = getCurrentWindow();
-          const currentPos = await window.outerPosition();
-          await window.setPosition({
-            x: currentPos.x + deltaX,
-            y: currentPos.y + deltaY
-          });
-        } catch (error) {
-          console.error('Error during drag:', error);
-        }
-
-        dragOffset.x = e.clientX;
-        dragOffset.y = e.clientY;
-      });
-
-      document.addEventListener('mouseup', () => {
-        if (isDragging) {
-          isDragging = false;
-          container.style.cursor = 'grab';
+      
+      UIUtils.setupDragFunctionality(
+        container,
+        () => {
+          // On drag start - cancel auto-hide
+          if (autoHideManager) autoHideManager.cancel();
+        },
+        () => {
+          // On drag end - save position and restart auto-hide
           savePosition();
-
-          // Re-enable auto-hide after drag is complete
           setTimeout(() => {
-            startAutoHide();
-          }, 500); // Small delay before restarting auto-hide
+            if (autoHideManager) autoHideManager.start();
+          }, 500);
         }
-      });
-
-      container.style.cursor = 'grab';
+      );
     }
 
-    // Auto-hide functionality with progress indicator
-    function startAutoHide() {
-      if (autoHideTimer) clearTimeout(autoHideTimer);
-      if (progressTimer) clearInterval(progressTimer);
-
-      const progressBar = document.getElementById('auto-hide-progress');
-      progressBar.classList.add('visible');
-      progressBar.classList.remove('paused');
-
-      autoHideStartTime = Date.now();
-      isAutoHidePaused = false;
-
-      // Update progress bar
-      progressTimer = setInterval(() => {
-        if (isAutoHidePaused) return;
-
-        const elapsed = Date.now() - autoHideStartTime;
-        const progress = Math.min((elapsed / autoHideDuration) * 100, 100);
-        progressBar.style.width = progress + '%';
-
-        if (progress >= 100) {
-          clearInterval(progressTimer);
-        }
-      }, 50); // Update every 50ms for smooth animation
-
-      // Set the main auto-hide timer
-      autoHideTimer = setTimeout(() => {
+    // Auto-hide functionality using AutoHideManager
+    function initAutoHide() {
+      autoHideManager = new AutoHideManager(3000, () => {
         const container = document.getElementById('pre-break-container');
         container.classList.add('fade-out');
-
-        setTimeout(() => {
-          closeWindow();
-        }, 500); // Wait for fade animation
-      }, autoHideDuration);
+        setTimeout(() => closeWindow(), 500);
+      });
+      
+      autoHideManager.setProgressElement(document.getElementById('auto-hide-progress'));
     }
 
-    // Cancel auto-hide on interaction
-    function cancelAutoHide() {
-      if (autoHideTimer) {
-        clearTimeout(autoHideTimer);
-        autoHideTimer = null;
-      }
-      if (progressTimer) {
-        clearInterval(progressTimer);
-        progressTimer = null;
-      }
-
-      const progressBar = document.getElementById('auto-hide-progress');
-      progressBar.classList.remove('visible');
-      progressBar.style.width = '0%';
-      isAutoHidePaused = true;
-    }
-
-    // Pause auto-hide (for hover)
     function pauseAutoHide() {
-      if (!isAutoHidePaused && autoHideTimer) {
-        console.log('⏸️ Pausing auto-hide timer');
-        
-        // Cancel the main timer that closes the window
-        clearTimeout(autoHideTimer);
-        autoHideTimer = null;
-        
-        isAutoHidePaused = true;
-        const progressBar = document.getElementById('auto-hide-progress');
-        progressBar.classList.add('paused');
-        
-        const currentProgress = parseFloat(progressBar.style.width) || 0;
-        console.log(`⏸️ Paused at ${currentProgress.toFixed(1)}% progress`);
-      }
+      if (autoHideManager) autoHideManager.pause();
     }
 
-    // Resume auto-hide (after hover ends)
     function resumeAutoHide() {
-      if (!isDragging && isAutoHidePaused) {
-        console.log('▶️ Resuming auto-hide timer');
-        isAutoHidePaused = false;
-        const progressBar = document.getElementById('auto-hide-progress');
-        progressBar.classList.remove('paused');
-        
-        // Calculate how much time has already elapsed based on progress bar width
-        const currentProgress = parseFloat(progressBar.style.width) || 0;
-        const elapsedTime = (currentProgress / 100) * autoHideDuration;
-        const remainingTime = autoHideDuration - elapsedTime;
-        
-        // Update the start time for progress calculation
-        autoHideStartTime = Date.now() - elapsedTime;
-        
-        // Set a new timer for the remaining time
-        autoHideTimer = setTimeout(() => {
-          const container = document.getElementById('pre-break-container');
-          container.classList.add('fade-out');
-
-          setTimeout(() => {
-            closeWindow();
-          }, 500); // Wait for fade animation
-        }, remainingTime);
-        
-        console.log(`⏰ Resuming from ${currentProgress.toFixed(1)}% progress, ${Math.ceil(remainingTime/1000)}s remaining`);
-      }
+      if (autoHideManager && !isDragging) autoHideManager.resume();
     }
 
     // Keyboard shortcuts
@@ -460,16 +272,17 @@
         }
       }, 1000);
 
-      // Wait a bit for Rust to set position, then initialize
+      // Wait for Rust positioning to complete, then initialize
       setTimeout(() => {
         loadPosition();
-      }, 100);
+      }, 300);
 
       // Initialize other features with small delay
       setTimeout(() => {
         initDragging();
         initMouseHover();
-        startAutoHide();
+        initAutoHide();
+        if (autoHideManager) autoHideManager.start();
       }, 400);
 
       console.log('Pre-break window initialized successfully');

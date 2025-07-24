@@ -7,6 +7,10 @@ use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent}
 // For autostart plugin
 use tauri_plugin_autostart::{MacosLauncher, ManagerExt};
 
+// Import our window manager module
+mod window_manager;
+use window_manager::{WindowManager, WindowConfig};
+
 #[derive(Serialize, Deserialize)]
 struct AppSettings {
     break_minutes: u32,
@@ -27,74 +31,12 @@ struct AppSettings {
 
 #[tauri::command]
 fn force_break_window(app_handle: tauri::AppHandle, duration: Option<u32>) -> Result<(), String> {
-    let break_duration = duration.unwrap_or(300); // Default 5 minutes
-    let url = format!("force_break.html?duration={}", break_duration);
+    let break_duration = duration.unwrap_or(300);
+    println!("💥 Creating force break window with duration: {} seconds", break_duration);
 
-    println!(
-        "💥 Creating force break window with duration: {} seconds",
-        break_duration
-    );
-    println!("🔗 URL being loaded: {}", url);
-    println!("📊 Duration parameter: {:?}", duration);
-
-    // Create window in separate thread as recommended by Tauri docs
-    let handle = app_handle.clone();
-    std::thread::spawn(move || {
-        println!("📂 Attempting to load: {}", url);
-        match WebviewWindowBuilder::new(&handle, "force_break", WebviewUrl::App(url.into()))
-            .fullscreen(true)
-            .always_on_top(true)
-            .decorations(false)
-            .resizable(false)
-            .focused(true)
-            .visible(false) // Start hidden to prevent white flash
-            .skip_taskbar(true)
-            .maximized(true)
-            .transparent(false) // Ensure no transparency issues
-            .shadow(false) // Remove window shadow
-            .build()
-        {
-            Ok(window) => {
-                println!("✅ Force break window created successfully!");
-                println!("🎯 Window label: {}", window.label());
-                println!("📋 Expected content: Fullscreen break window with countdown");
-
-                // Wait for content to load, then show window
-                std::thread::sleep(std::time::Duration::from_millis(800));
-                
-                // Show the window after content has loaded
-                if let Err(e) = window.show() {
-                    println!("⚠️ Failed to show force break window: {}", e);
-                } else {
-                    println!("✅ Force break window shown successfully");
-                }
-                
-                if let Err(e) = window.set_focus() {
-                    println!("⚠️ Failed to focus force break window: {}", e);
-                }
-                
-                // Inject JavaScript to confirm window is ready
-                std::thread::sleep(std::time::Duration::from_millis(100));
-                let _ = window.eval("console.log('🔥 Force break window shown by Rust'); document.body.style.opacity = '1';");
-
-                // Inject JavaScript to signal that window is ready
-                std::thread::sleep(std::time::Duration::from_millis(200));
-                let debug_js = format!(
-                    "console.log('🔥 Force break window shown by Rust'); \
-                     console.log('⏰ Duration: {} seconds'); \
-                     window.WINDOW_READY = true;",
-                    break_duration
-                );
-                let _ = window.eval(&debug_js);
-            }
-            Err(e) => {
-                println!("❌ Failed to create force break window: {}", e);
-            }
-        }
-    });
-
-    println!("🚀 Force break window creation initiated in separate thread");
-    Ok(())
+    WindowManager::close_existing_window(&app_handle, "force_break");
+    let config = WindowConfig::force_break(break_duration);
+    WindowManager::create_window(app_handle, config)
 }
 
 #[tauri::command]
@@ -109,206 +51,21 @@ fn close_window(app_handle: tauri::AppHandle, label: String) -> Result<(), Strin
 
 #[tauri::command]
 fn notify_window(app_handle: tauri::AppHandle, duration: Option<u32>) -> Result<(), String> {
-    let break_duration = duration.unwrap_or(600); // Default 10 minutes
-    let url = format!("notify.html?duration={}", break_duration);
+    let break_duration = duration.unwrap_or(600);
+    println!("🔔 Creating notify window with duration: {} seconds", break_duration);
 
-    println!(
-        "🔔 Creating notify window with duration: {} seconds",
-        break_duration
-    );
-    println!("🔗 URL being loaded: {}", url);
-
-    // Close existing window if it exists
-    if let Some(existing) = app_handle.get_webview_window("notify") {
-        println!("📄 Closing existing notify window");
-        let _ = existing.close();
-    }
-
-    // Create window in separate thread as recommended by Tauri docs
-    let handle = app_handle.clone();
-    std::thread::spawn(move || {
-        println!("📂 Attempting to load: {}", url);
-        // Window dimensions
-        let window_width = 480.0;
-        let window_height = 320.0;
-
-        // Get screen dimensions to position at center
-        let (screen_width, screen_height) = match handle.primary_monitor() {
-            Ok(Some(monitor)) => {
-                let size = monitor.size();
-                println!("📺 Monitor detected for notify window: {}x{}", size.width, size.height);
-                (size.width as f64, size.height as f64)
-            }
-            _ => {
-                println!("⚠️ Could not get monitor info for notify window, using default screen size");
-                (1920.0, 1080.0) // Default fallback
-            }
-        };
-
-        // Calculate center position
-        let x = (screen_width - window_width) / 2.0;
-        let y = (screen_height - window_height) / 2.0;
-
-        println!("🎯 Positioning notify window at CENTER: ({:.0}, {:.0}) on {:.0}x{:.0} screen", x, y, screen_width, screen_height);
-        println!("📏 Notify window size: {:.0}x{:.0}", window_width, window_height);
-
-        match WebviewWindowBuilder::new(&handle, "notify", WebviewUrl::App(url.into()))
-            .title("Break Time - Break Reminder Pro")
-            .always_on_top(true)
-            .decorations(true) // Enable native title bar with minimize/close buttons
-            .resizable(false)
-            .inner_size(window_width, window_height + 30.0) // Add height for title bar
-            .position(x, y - 15.0) // Adjust position for title bar
-            .focused(true)
-            .visible(false) // Start hidden, show after positioning
-            .transparent(false)
-            .shadow(true)
-            .minimizable(true) // Allow minimize
-            .maximizable(false) // Disable maximize
-            .closable(true) // Allow close
-            .build()
-        {
-            Ok(window) => {
-                println!("✅ Notify window created successfully!");
-                println!("🎯 Window label: {}", window.label());
-                println!("📋 Expected content: Blue notification with countdown");
-                println!("📍 Size: {}x{}", window_width, window_height);
-
-                // Ensure position is set correctly and show window
-                std::thread::sleep(std::time::Duration::from_millis(100));
-                
-                // Double-check position and show window
-                if let Err(e) = window.set_position(tauri::Position::Physical(tauri::PhysicalPosition { x: x as i32, y: y as i32 })) {
-                    println!("⚠️ Failed to set notify window position: {}", e);
-                }
-                
-                if let Err(e) = window.show() {
-                    println!("⚠️ Failed to show notify window: {}", e);
-                }
-                
-                if let Err(e) = window.set_focus() {
-                    println!("⚠️ Failed to focus notify window: {}", e);
-                }
-
-                // Inject JavaScript to confirm window is ready and positioned
-                std::thread::sleep(std::time::Duration::from_millis(300));
-                let debug_js = format!(
-                    "console.log('🔥 Notify window positioned by Rust at ({:.0}, {:.0})'); \
-                     window.RUST_POSITIONED = true; \
-                     console.log('⏰ Duration: {} seconds');",
-                    x, y,
-                    break_duration
-                );
-                let _ = window.eval(&debug_js);
-            }
-            Err(e) => {
-                println!("❌ Failed to create notify window: {}", e);
-            }
-        }
-    });
-
-    println!("🚀 Notify window creation initiated in separate thread");
-    Ok(())
+    WindowManager::close_existing_window(&app_handle, "notify");
+    let config = WindowConfig::notify(&app_handle, break_duration);
+    WindowManager::create_window(app_handle, config)
 }
 
 #[tauri::command]
 fn pre_break_notification_window(app_handle: tauri::AppHandle) -> Result<(), String> {
     println!("⏰ Creating pre-break window...");
 
-    // Close existing window if it exists
-    if let Some(existing) = app_handle.get_webview_window("pre_break") {
-        println!("📄 Closing existing pre-break window");
-        let _ = existing.close();
-    }
-
-    // Create window in separate thread as recommended by Tauri docs
-    let handle = app_handle.clone();
-    std::thread::spawn(move || {
-        println!("📂 Attempting to load: pre_break.html");
-
-        // Window dimensions - compact vertical layout
-        let window_width = 220.0;
-        let window_height = 90.0;
-
-        // Get screen dimensions to position at bottom center
-        let (screen_width, screen_height) = match handle.primary_monitor() {
-            Ok(Some(monitor)) => {
-                let size = monitor.size();
-                println!("📺 Monitor detected: {}x{}", size.width, size.height);
-                (size.width as f64, size.height as f64)
-            }
-            _ => {
-                println!("⚠️ Could not get monitor info, using default screen size");
-                (1920.0, 1080.0) // Default fallback
-            }
-        };
-
-        // Calculate bottom-center position with better margins
-        let x = (screen_width - window_width) / 2.0;
-        let y = screen_height - window_height - 150.0; // 150px from bottom for better visibility
-
-        println!("🎯 Positioning pre-break at BOTTOM CENTER: ({:.0}, {:.0}) on {:.0}x{:.0} screen", x, y, screen_width, screen_height);
-        println!("📏 Window size: {:.0}x{:.0}", window_width, window_height);
-
-        // Create window with initial position set
-        match WebviewWindowBuilder::new(
-            &handle,
-            "pre_break",
-            WebviewUrl::App("pre_break.html".into()),
-        )
-        .title("Pre-Break Warning")
-        .always_on_top(true)
-        .decorations(false)
-        .resizable(false)
-        .inner_size(window_width, window_height)
-        .position(x, y) // Set initial position to bottom center
-        .focused(false) // Don't steal focus
-        .visible(false) // Start hidden, show after positioning
-        .skip_taskbar(true)
-        .transparent(true) // Allow transparent background
-        .shadow(false)
-        .build()
-        {
-            Ok(window) => {
-                println!("✅ Pre-break window created successfully!");
-                println!("🎯 Window label: {}", window.label());
-                println!("📋 Expected content: Compact yellow pre-break warning");
-                println!("📍 Size: {}x{}", window_width, window_height);
-
-                // Ensure position is set correctly and show window
-                std::thread::sleep(std::time::Duration::from_millis(100));
-                
-                // Double-check position and show window
-                if let Err(e) = window.set_position(tauri::Position::Physical(tauri::PhysicalPosition { x: x as i32, y: y as i32 })) {
-                    println!("⚠️ Failed to set position: {}", e);
-                }
-                
-                if let Err(e) = window.show() {
-                    println!("⚠️ Failed to show window: {}", e);
-                }
-                
-                if let Err(e) = window.set_always_on_top(true) {
-                    println!("⚠️ Failed to set always on top: {}", e);
-                }
-
-                // Inject JavaScript to disable conflicting positioning
-                std::thread::sleep(std::time::Duration::from_millis(300));
-                let js_code = format!(
-                    "console.log('🔥 Pre-break window positioned by Rust at ({:.0}, {:.0})'); \
-                     window.RUST_POSITIONED = true; \
-                     document.title = 'PRE-BREAK POSITIONED BY RUST';",
-                    x, y
-                );
-                let _ = window.eval(&js_code);
-            }
-            Err(e) => {
-                println!("❌ Failed to create pre-break window: {}", e);
-            }
-        }
-    });
-
-    println!("🚀 Pre-break window creation initiated in separate thread");
-    Ok(())
+    WindowManager::close_existing_window(&app_handle, "pre_break");
+    let config = WindowConfig::pre_break(&app_handle);
+    WindowManager::create_window(app_handle, config)
 }
 
 #[tauri::command]
@@ -740,107 +497,9 @@ async fn get_primary_monitor_size(app_handle: tauri::AppHandle) -> Result<(u32, 
 fn meeting_detected_notification(app_handle: tauri::AppHandle) -> Result<(), String> {
     println!("🤝 Creating meeting detected notification window...");
 
-    // Close existing window if it exists
-    if let Some(existing) = app_handle.get_webview_window("meeting_notification") {
-        println!("📄 Closing existing meeting notification window");
-        let _ = existing.close();
-    }
-
-    // Create window in separate thread as recommended by Tauri docs
-    let handle = app_handle.clone();
-    std::thread::spawn(move || {
-        println!("📂 Attempting to load: meeting_notification.html");
-
-        // Window dimensions - compact notification (similar to pre-break)
-        let window_width = 240.0;
-        let window_height = 90.0;
-
-        // Get screen dimensions to position at bottom center (like pre-break)
-        let (screen_width, screen_height) = match handle.primary_monitor() {
-            Ok(Some(monitor)) => {
-                let size = monitor.size();
-                println!("📺 Monitor detected for meeting notification: {}x{}", size.width, size.height);
-                (size.width as f64, size.height as f64)
-            }
-            _ => {
-                println!("⚠️ Could not get monitor info for meeting notification, using default screen size");
-                (1920.0, 1080.0) // Default fallback
-            }
-        };
-
-        // Calculate bottom-center position (slightly above pre-break position)
-        let x = (screen_width - window_width) / 2.0;
-        let y = screen_height - window_height - 250.0; // 250px from bottom (above pre-break)
-
-        println!("🎯 Positioning meeting notification at BOTTOM CENTER: ({:.0}, {:.0}) on {:.0}x{:.0} screen", x, y, screen_width, screen_height);
-        println!("📏 Meeting notification window size: {:.0}x{:.0}", window_width, window_height);
-
-        // Create window with initial position set
-        match WebviewWindowBuilder::new(
-            &handle,
-            "meeting_notification",
-            WebviewUrl::App("meeting_notification.html".into()),
-        )
-        .title("Meeting Detected")
-        .always_on_top(true)
-        .decorations(false)
-        .resizable(false)
-        .inner_size(window_width, window_height)
-        .position(x, y) // Set initial position to bottom center
-        .focused(false) // Don't steal focus
-        .visible(false) // Start hidden, show after positioning
-        .skip_taskbar(true)
-        .transparent(true)
-        .shadow(false)
-        .build()
-        {
-            Ok(window) => {
-                println!("✅ Meeting notification window created successfully!");
-                println!("🎯 Window label: {}", window.label());
-                println!("📋 Expected content: Meeting detected notification");
-                println!("📍 Size: {}x{}", window_width, window_height);
-
-                // Ensure position is set correctly and show window
-                std::thread::sleep(std::time::Duration::from_millis(100));
-                
-                // Double-check position and show window
-                if let Err(e) = window.set_position(tauri::Position::Physical(tauri::PhysicalPosition { x: x as i32, y: y as i32 })) {
-                    println!("⚠️ Failed to set meeting notification position: {}", e);
-                }
-                
-                if let Err(e) = window.show() {
-                    println!("⚠️ Failed to show meeting notification window: {}", e);
-                }
-                
-                if let Err(e) = window.set_always_on_top(true) {
-                    println!("⚠️ Failed to set meeting notification always on top: {}", e);
-                }
-
-                // Auto-close after 4 seconds
-                let window_clone = window.clone();
-                std::thread::spawn(move || {
-                    std::thread::sleep(std::time::Duration::from_secs(4));
-                    let _ = window_clone.close();
-                });
-
-                // Inject JavaScript to disable conflicting positioning
-                std::thread::sleep(std::time::Duration::from_millis(300));
-                let js_code = format!(
-                    "console.log('🔥 Meeting notification positioned by Rust at ({:.0}, {:.0})'); \
-                     window.RUST_POSITIONED = true; \
-                     document.title = 'MEETING NOTIFICATION POSITIONED BY RUST';",
-                    x, y
-                );
-                let _ = window.eval(&js_code);
-            }
-            Err(e) => {
-                println!("❌ Failed to create meeting notification window: {}", e);
-            }
-        }
-    });
-
-    println!("🚀 Meeting notification window creation initiated in separate thread");
-    Ok(())
+    WindowManager::close_existing_window(&app_handle, "meeting_notification");
+    let config = WindowConfig::meeting_notification(&app_handle);
+    WindowManager::create_window(app_handle, config)
 }
 
 #[tauri::command]

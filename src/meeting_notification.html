@@ -102,172 +102,76 @@
       <div class="progress-bar" id="auto-close-progress"></div>
     </div>
 
-    <script>
+    <script type="module">
+      import { WindowUtils, WindowPositionManager, AutoHideManager } from './shared/window-utils.js';
+      import { UIUtils } from './shared/ui-utils.js';
+
       console.log('🤝 Meeting notification window loaded successfully!');
       document.title = 'Meeting Detected - LOADED';
       
-      let autoCloseTimer = null;
-      let progressTimer = null;
-      let autoCloseDuration = 4000; // 4 seconds
-      let autoCloseStartTime = null;
+      let autoHideManager = null;
       
       // Close window function
       async function closeWindow() {
-        try {
-          const { invoke } = window.__TAURI__.core;
-          await invoke('close_window', { label: 'meeting_notification' });
-        } catch (error) {
-          console.error('Error closing meeting notification window:', error);
-          try {
-            const { getCurrentWindow } = window.__TAURI__.window;
-            await getCurrentWindow().close();
-          } catch (fallbackError) {
-            console.error('Fallback close failed:', fallbackError);
-          }
-        }
+        await WindowUtils.closeWindow('meeting_notification');
       }
       
-      // Position management (similar to pre-break)
+      // Position management using WindowPositionManager
+      const positionManager = new WindowPositionManager('meetingNotification');
+      
       async function loadPosition() {
-        try {
-          // Check if window was positioned by Rust
-          if (window.RUST_POSITIONED) {
-            console.log('🎯 Meeting notification already positioned by Rust - skipping JS positioning');
-            const { getCurrentWindow } = window.__TAURI__.window;
-            const currentWindow = getCurrentWindow();
-            await currentWindow.show();
-            await currentWindow.setAlwaysOnTop(true);
-            return;
-          }
+        await positionManager.positionWindow(async () => {
+          // Custom positioning for meeting notification (above pre-break position)
+          const screen = await WindowUtils.getScreenDimensions();
+          const size = await WindowUtils.getWindowSize();
           
-          console.log('🎯 Rust positioning not detected for meeting notification, using JavaScript fallback');
-          await setDefaultPosition();
-        } catch (error) {
-          console.error('Error in meeting notification loadPosition:', error);
-          await setDefaultPosition();
-        }
-      }
-      
-      async function setDefaultPosition() {
-        try {
-          const { getCurrentWindow } = window.__TAURI__.window;
-          const { invoke } = window.__TAURI__.core;
-          const window = getCurrentWindow();
-          
-          await new Promise(resolve => setTimeout(resolve, 100));
-          
-          const size = await window.outerSize();
-          
-          let screenWidth, screenHeight;
-          try {
-            const [width, height] = await invoke('get_primary_monitor_size');
-            screenWidth = width;
-            screenHeight = height;
-          } catch (error) {
-            console.warn('Failed to get monitor size for meeting notification, using screen API:', error);
-            screenWidth = screen.width;
-            screenHeight = screen.height;
-          }
-          
-          console.log(`Meeting notification - Screen: ${screenWidth}x${screenHeight}, Window: ${size.width}x${size.height}`);
-          
-          // Position at bottom center (above pre-break position)
-          const x = Math.floor((screenWidth - size.width) / 2);
-          const y = screenHeight - size.height - 250; // 250px from bottom
+          const x = Math.floor((screen.width - size.width) / 2);
+          const y = screen.height - size.height - 250; // 250px from bottom
           
           console.log(`🎯 Positioning meeting notification at BOTTOM CENTER: (${x}, ${y})`);
-          await window.setPosition({ x, y });
-          
-          await window.show();
-          await window.setAlwaysOnTop(true);
-          
-        } catch (error) {
-          console.error('Error setting meeting notification default position:', error);
-        }
+          await WindowUtils.positionWindow(x, y);
+          await WindowUtils.showAndFocus();
+          await WindowUtils.setAlwaysOnTop(true);
+        });
       }
       
-      // Auto-close functionality with progress indicator
-      function startAutoClose() {
-        if (autoCloseTimer) clearTimeout(autoCloseTimer);
-        if (progressTimer) clearInterval(progressTimer);
-        
-        const progressBar = document.getElementById('auto-close-progress');
-        progressBar.classList.add('visible');
-        
-        autoCloseStartTime = Date.now();
-        
-        // Update progress bar and countdown
-        progressTimer = setInterval(() => {
-          const elapsed = Date.now() - autoCloseStartTime;
-          const progress = Math.min((elapsed / autoCloseDuration) * 100, 100);
-          progressBar.style.width = progress + '%';
-          
-          // Update countdown display
-          const remaining = Math.ceil((autoCloseDuration - elapsed) / 1000);
-          const countdownDisplay = document.getElementById('countdown-display');
-          if (countdownDisplay && remaining > 0) {
-            countdownDisplay.textContent = remaining + 's';
-          }
-          
-          if (progress >= 100) {
-            clearInterval(progressTimer);
-          }
-        }, 50);
-        
-        // Set the main auto-close timer
-        autoCloseTimer = setTimeout(() => {
+      // Auto-close functionality using AutoHideManager
+      function initAutoClose() {
+        autoHideManager = new AutoHideManager(4000, () => {
           const container = document.getElementById('meeting-container');
           container.classList.add('fade-out');
+          setTimeout(() => closeWindow(), 500);
+        });
+        
+        autoHideManager.setProgressElement(document.getElementById('auto-close-progress'));
+        
+        // Custom progress update to show countdown
+        const originalStart = autoHideManager.start.bind(autoHideManager);
+        autoHideManager.start = function() {
+          originalStart();
           
-          setTimeout(() => {
-            closeWindow();
-          }, 500);
-        }, autoCloseDuration);
+          // Update countdown display
+          const updateCountdown = setInterval(() => {
+            if (this.isPaused) return;
+            
+            const elapsed = Date.now() - this.startTime;
+            const remaining = Math.ceil((this.duration - elapsed) / 1000);
+            const countdownDisplay = document.getElementById('countdown-display');
+            if (countdownDisplay && remaining > 0) {
+              countdownDisplay.textContent = remaining + 's';
+            }
+            
+            if (remaining <= 0) {
+              clearInterval(updateCountdown);
+            }
+          }, 100);
+        };
       }
       
-      // Dragging functionality (similar to pre-break)
+      // Dragging functionality
       function initDragging() {
         const container = document.getElementById('meeting-container');
-        let isDragging = false;
-        let dragOffset = { x: 0, y: 0 };
-        
-        container.addEventListener('mousedown', (e) => {
-          isDragging = true;
-          dragOffset.x = e.clientX;
-          dragOffset.y = e.clientY;
-          container.style.cursor = 'grabbing';
-        });
-        
-        document.addEventListener('mousemove', async (e) => {
-          if (!isDragging) return;
-          
-          const deltaX = e.clientX - dragOffset.x;
-          const deltaY = e.clientY - dragOffset.y;
-          
-          try {
-            const { getCurrentWindow } = window.__TAURI__.window;
-            const window = getCurrentWindow();
-            const currentPos = await window.outerPosition();
-            await window.setPosition({
-              x: currentPos.x + deltaX,
-              y: currentPos.y + deltaY
-            });
-          } catch (error) {
-            console.error('Error during meeting notification drag:', error);
-          }
-          
-          dragOffset.x = e.clientX;
-          dragOffset.y = e.clientY;
-        });
-        
-        document.addEventListener('mouseup', () => {
-          if (isDragging) {
-            isDragging = false;
-            container.style.cursor = 'grab';
-          }
-        });
-        
-        container.style.cursor = 'grab';
+        UIUtils.setupDragFunctionality(container);
       }
       
       // Keyboard shortcuts
@@ -279,15 +183,16 @@
       
       // Initialize everything
       try {
-        // Wait a bit for Rust to set position, then initialize
+        // Wait for Rust positioning to complete, then initialize
         setTimeout(() => {
           loadPosition();
-        }, 100);
+        }, 300);
         
         // Initialize other features
         setTimeout(() => {
           initDragging();
-          startAutoClose();
+          initAutoClose();
+          if (autoHideManager) autoHideManager.start();
         }, 400);
         
         console.log('Meeting notification initialized successfully');

@@ -357,7 +357,11 @@
     </div>
   </div>
 
-  <script>
+  <script type="module">
+    import { TimerUtils, CountdownTimer } from './shared/timer.js';
+    import { WindowUtils } from './shared/window-utils.js';
+    import { UIUtils } from './shared/ui-utils.js';
+
     console.log('Force break window loaded successfully!');
 
     const { invoke } = window.__TAURI__.core;
@@ -397,14 +401,10 @@
       progressCircle.style.strokeDashoffset = offset;
     }
 
-    function formatTime(seconds) {
-      const minutes = Math.floor(seconds / 60);
-      const remainingSeconds = seconds % 60;
-      return `${minutes.toString().padStart(2, '0')}:${remainingSeconds.toString().padStart(2, '0')}`;
-    }
+    // formatTime function now provided by TimerUtils.formatTime
 
     function updateCountdown() {
-      countdownDisplay.textContent = formatTime(currentSeconds);
+      countdownDisplay.textContent = TimerUtils.formatTime(currentSeconds);
       updateProgress();
 
       if (currentSeconds <= 0) {
@@ -443,7 +443,7 @@
           await invoke('break_ended_early');
         }
 
-        await invoke('close_window', { label: 'force_break' });
+        await WindowUtils.closeWindow('force_break');
       } catch (error) {
         console.error('Error closing window:', error);
         window.close();
@@ -507,31 +507,7 @@
     }
 
     function getBreakDuration() {
-      try {
-        // First try to get from URL parameters
-        const urlParams = new URLSearchParams(window.location.search);
-        const duration = urlParams.get('duration');
-        console.log('URL search params:', window.location.search);
-        console.log('Duration from URL:', duration);
-
-        if (duration && !isNaN(parseInt(duration))) {
-          const durationInt = parseInt(duration);
-          console.log('Using duration from URL:', durationInt);
-          return durationInt;
-        }
-
-        // Fallback to localStorage
-        const stored = localStorage.getItem('breakDuration');
-        console.log('Duration from localStorage:', stored);
-        if (stored && !isNaN(parseInt(stored))) {
-          return parseInt(stored);
-        }
-      } catch (error) {
-        console.error('Error getting break duration:', error);
-      }
-
-      console.log('Using default duration: 300 seconds');
-      return 300;
+      return TimerUtils.getBreakDuration(300);
     }
 
     // Event listeners
@@ -590,7 +566,7 @@
       currentSeconds = totalSeconds;
 
       console.log('Final break duration:', totalSeconds, 'seconds');
-      console.log('Formatted time:', formatTime(totalSeconds));
+      console.log('Formatted time:', TimerUtils.formatTime(totalSeconds));
 
       initProgressCircle();
       updateCountdown();

@@ -218,42 +218,26 @@
         </button>
       </div>
     </div>
-    <script>
+    <script type="module">
+      import { TimerUtils, CountdownTimer } from './shared/timer.js';
+      import { WindowUtils, WindowPositionManager } from './shared/window-utils.js';
+
       console.log('🔥 Break notification window loaded successfully!');
       document.title = 'Break Time - Break Reminder Pro';
       
       // Get break duration from URL parameters
       function getBreakDuration() {
-        try {
-          const urlParams = new URLSearchParams(window.location.search);
-          const duration = urlParams.get('duration');
-          console.log('=== BREAK NOTIFICATION DURATION ===');
-          console.log('Current URL:', window.location.href);
-          console.log('Duration from URL:', duration);
-          
-          if (duration && !isNaN(parseInt(duration))) {
-            const durationInt = parseInt(duration);
-            console.log('Using break duration:', durationInt, 'seconds');
-            return durationInt;
-          }
-        } catch (error) {
-          console.error('Error parsing break duration:', error);
-        }
-        
-        console.log('Using default break duration: 600 seconds (10 minutes)');
-        return 600;
+        return TimerUtils.getBreakDuration(600);
       }
       
       let breakTimeRemaining = getBreakDuration();
       let countdownInterval = null;
       
       function updateCountdown() {
-        const min = Math.floor(breakTimeRemaining / 60).toString().padStart(2, "0");
-        const sec = (breakTimeRemaining % 60).toString().padStart(2, "0");
         const countdownEl = document.getElementById("notify-countdown");
         
         if (countdownEl) {
-          countdownEl.textContent = `${min}:${sec}`;
+          countdownEl.textContent = TimerUtils.formatTime(breakTimeRemaining);
           
           // Add visual feedback when time is running low
           if (breakTimeRemaining <= 60) {
@@ -296,19 +280,15 @@
             await invoke('break_ended_early');
           }
           
-          await invoke('close_window', { label: 'notify' });
+          await WindowUtils.closeWindow('notify');
           console.log('Break notification window closed');
         } catch (error) {
           console.error('Error closing notification window:', error);
-          // Fallback: try to close directly
-          try {
-            const { getCurrentWindow } = window.__TAURI__.window;
-            await getCurrentWindow().close();
-          } catch (fallbackError) {
-            console.error('Fallback close failed:', fallbackError);
-          }
         }
       }
+
+      // Make closeWindow available globally for the onclick handler
+      window.closeWindow = closeWindow;
       
 
       
@@ -331,67 +311,19 @@
 
       // Native window controls handle dragging, so no custom drag functionality needed
       
-      // Position management (similar to pre-break)
-      async function loadPosition() {
-        try {
-          // Check if window was positioned by Rust
-          if (window.RUST_POSITIONED) {
-            console.log('🎯 Notify window already positioned by Rust - skipping JS positioning');
-            return;
-          }
-          
-          console.log('🎯 Rust positioning not detected for notify window, using JavaScript fallback');
-          await setDefaultPosition();
-        } catch (error) {
-          console.error('Error in notify window loadPosition:', error);
-          await setDefaultPosition();
-        }
-      }
+      // Position management using WindowPositionManager
+      const positionManager = new WindowPositionManager('notify');
       
-      async function setDefaultPosition() {
-        try {
-          const { getCurrentWindow } = window.__TAURI__.window;
-          const { invoke } = window.__TAURI__.core;
-          const currentWindow = getCurrentWindow();
-          
-          await new Promise(resolve => setTimeout(resolve, 100));
-          
-          const size = await currentWindow.outerSize();
-          
-          let screenWidth, screenHeight;
-          try {
-            const [width, height] = await invoke('get_primary_monitor_size');
-            screenWidth = width;
-            screenHeight = height;
-          } catch (error) {
-            console.warn('Failed to get monitor size for notify window, using screen API:', error);
-            screenWidth = screen.width;
-            screenHeight = screen.height;
-          }
-          
-          console.log(`Notify window - Screen: ${screenWidth}x${screenHeight}, Window: ${size.width}x${size.height}`);
-          
-          // Position at center
-          const x = Math.floor((screenWidth - size.width) / 2);
-          const y = Math.floor((screenHeight - size.height) / 2);
-          
-          console.log(`🎯 Positioning notify window at CENTER: (${x}, ${y})`);
-          await currentWindow.setPosition({ x, y });
-          
-          await currentWindow.show();
-          await currentWindow.setFocus();
-          
-        } catch (error) {
-          console.error('Error setting notify window default position:', error);
-        }
+      async function loadPosition() {
+        await positionManager.positionWindow(WindowPositionManager.positionAtCenter);
       }
 
       // Initialize countdown when page loads
       try {
-        // Wait a bit for Rust to set position, then initialize
+        // Wait for Rust positioning to complete, then initialize
         setTimeout(() => {
           loadPosition();
-        }, 100);
+        }, 300);
         
         startCountdown();
         console.log('Break notification initialized successfully');

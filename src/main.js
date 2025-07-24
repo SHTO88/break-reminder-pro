@@ -1,3 +1,7 @@
+import { settingsManager, DEFAULT_SETTINGS } from './shared/settings.js';
+import { TimerUtils, CountdownTimer } from './shared/timer.js';
+import { UIUtils } from './shared/ui-utils.js';
+
 const { invoke } = window.__TAURI__.core;
 
 // Timer state
@@ -11,81 +15,41 @@ let preBreakTriggered = false;
 let currentTimerSettings = null; // Cache settings for current timer session
 let recurringTimeout = null; // Track recurring timer timeout
 
-// Default settings
-const defaultSettings = {
-  break_minutes: 20,
-  break_seconds: 0,
-  break_duration_minutes: 0,
-  break_duration_seconds: 20,
-  break_mode: 'force',
-  auto_pause: false,
-  meeting_detect: false,
-  pre_break: false,
-  pre_break_minutes: 0,
-  pre_break_seconds: 30,
-  break_chime: false,
-  recurring: false,
-  autostart: false,
-  auto_start_timer: false
-};
-
 // Settings management
 async function saveSettings() {
   try {
-    const breakDurationMinutes = parseInt(document.getElementById("break-duration-minutes").value) || 0;
-    const breakDurationSeconds = parseInt(document.getElementById("break-duration-seconds").value) || 0;
-    
-    // Load existing settings first
-    const existingSettings = await loadSettings();
-    
-    // Only update the settings that are managed on this page
-    const updatedSettings = {
-      ...existingSettings,
+    const newSettings = {
       break_minutes: parseInt(document.getElementById("break-minutes").value) || 0,
       break_seconds: parseInt(document.getElementById("break-seconds").value) || 0,
-      break_duration_minutes: breakDurationMinutes,
-      break_duration_seconds: breakDurationSeconds,
+      break_duration_minutes: parseInt(document.getElementById("break-duration-minutes").value) || 0,
+      break_duration_seconds: parseInt(document.getElementById("break-duration-seconds").value) || 0,
       break_mode: document.querySelector('input[name="break-mode"]:checked')?.value || 'force',
       recurring: document.getElementById("recurring").checked
     };
 
-    await invoke('save_settings', { settings: updatedSettings });
-    console.log('Settings saved:', updatedSettings);
-    console.log(`Break duration saved as: ${breakDurationMinutes}m ${breakDurationSeconds}s`);
+    await settingsManager.save(newSettings);
+    console.log(`Break duration saved as: ${newSettings.break_duration_minutes}m ${newSettings.break_duration_seconds}s`);
   } catch (error) {
     console.error('Failed to save settings:', error);
   }
 }
 
 async function loadSettings() {
-  try {
-    const settings = await invoke('load_settings');
-    if (settings) {
-      console.log('Settings loaded:', settings);
-      // Merge with defaults to ensure all properties exist
-      return { ...defaultSettings, ...settings };
-    }
-    return defaultSettings;
-  } catch (error) {
-    console.error('Failed to load settings:', error);
-    return defaultSettings;
-  }
+  return await settingsManager.load();
 }
 
 function applySettingsToUI(settings) {
   try {
-    document.getElementById("break-minutes").value = settings.break_minutes;
-    document.getElementById("break-seconds").value = settings.break_seconds;
-    document.getElementById("break-duration-minutes").value = settings.break_duration_minutes;
-    document.getElementById("break-duration-seconds").value = settings.break_duration_seconds;
+    const fieldMappings = {
+      break_minutes: 'break-minutes',
+      break_seconds: 'break-seconds',
+      break_duration_minutes: 'break-duration-minutes',
+      break_duration_seconds: 'break-duration-seconds',
+      break_mode: 'break-mode',
+      recurring: 'recurring'
+    };
 
-    // Set break mode
-    const breakModeRadio = document.querySelector(`input[name="break-mode"][value="${settings.break_mode}"]`);
-    if (breakModeRadio) breakModeRadio.checked = true;
-
-    // Set recurring toggle
-    document.getElementById("recurring").checked = settings.recurring;
-
+    UIUtils.applySettingsToForm(settings, fieldMappings);
     console.log('Settings applied to UI:', settings);
   } catch (error) {
     console.error('Failed to apply settings to UI:', error);
@@ -215,17 +179,11 @@ function updateTimerDisplay() {
   const label = document.getElementById("timer-label");
 
   if (timerSeconds > 0) {
-    const min = Math.floor(timerSeconds / 60).toString().padStart(2, "0");
-    const sec = (timerSeconds % 60).toString().padStart(2, "0");
-    countdown.textContent = `${min}:${sec}`;
+    countdown.textContent = TimerUtils.formatTime(timerSeconds);
     label.textContent = "Next break in";
 
     // Add pulse effect when less than 1 minute
-    if (timerSeconds <= 60) {
-      countdown.classList.add('pulse');
-    } else {
-      countdown.classList.remove('pulse');
-    }
+    UIUtils.toggleClass("timer-countdown", "pulse", timerSeconds <= 60);
   } else if (isTimerRunning) {
     // Timer reached zero but still running (break in progress with recurring enabled)
     countdown.textContent = "00:00";
@@ -307,13 +265,7 @@ function updateRunningTime() {
     totalElapsed = Math.floor((pausedTime + (Date.now() - startTime)) / 1000);
   }
   
-  const min = Math.floor(totalElapsed / 60).toString().padStart(2, "0");
-  const sec = (totalElapsed % 60).toString().padStart(2, "0");
-
-  const runningTimeElement = document.getElementById('running-time');
-  if (runningTimeElement) {
-    runningTimeElement.textContent = `${min}:${sec}`;
-  }
+  UIUtils.updateText('running-time', TimerUtils.formatTime(totalElapsed));
 }
 
 function updateInfoPanel() {
@@ -354,16 +306,18 @@ function updateInfoPanel() {
 }
 
 function getBreakTimerValue() {
-  const minutes = parseInt(document.getElementById("break-minutes").value, 10) || 0;
-  const seconds = parseInt(document.getElementById("break-seconds").value, 10) || 0;
-  return (minutes * 60) + seconds;
+  return TimerUtils.parseTimeInputs(
+    document.getElementById("break-minutes"),
+    document.getElementById("break-seconds")
+  );
 }
 
 function getBreakDurationValue() {
-  const minutes = parseInt(document.getElementById("break-duration-minutes").value, 10) || 0;
-  const seconds = parseInt(document.getElementById("break-duration-seconds").value, 10) || 0;
-  const totalSeconds = (minutes * 60) + seconds;
-  console.log(`Break duration: ${minutes}m ${seconds}s = ${totalSeconds} total seconds`);
+  const totalSeconds = TimerUtils.parseTimeInputs(
+    document.getElementById("break-duration-minutes"),
+    document.getElementById("break-duration-seconds")
+  );
+  console.log(`Break duration: ${Math.floor(totalSeconds/60)}m ${totalSeconds%60}s = ${totalSeconds} total seconds`);
   return totalSeconds;
 }
 
@@ -639,17 +593,6 @@ function validateTimeInputs() {
   return null;
 }
 
-function formatTimeInput(input, maxValue) {
-  let value = parseInt(input.value, 10);
-  if (isNaN(value) || value < 0) {
-    input.value = 0;
-  } else if (value > maxValue) {
-    input.value = maxValue;
-  } else {
-    input.value = value;
-  }
-}
-
 // System tray functions
 async function hideToTray() {
   try {
@@ -728,8 +671,7 @@ window.addEventListener("DOMContentLoaded", async () => {
   });
 
   // Settings form
-  const timerForm = document.getElementById('timer-form');
-  timerForm.addEventListener('change', saveSettings);
+  UIUtils.setupFormListeners('timer-form', saveSettings);
 
   // Recurring toggle
   document.getElementById("recurring").addEventListener('change', saveSettings);
@@ -742,17 +684,7 @@ window.addEventListener("DOMContentLoaded", async () => {
     { element: document.getElementById("break-duration-seconds"), max: 59 }
   ];
 
-  timeInputs.forEach(({ element, max }) => {
-    element.addEventListener('blur', () => {
-      formatTimeInput(element, max);
-      saveSettings();
-    });
-    element.addEventListener('input', () => {
-      if (element.value.length > 3) {
-        element.value = element.value.slice(0, 3);
-      }
-    });
-  });
+  UIUtils.setupTimeInputs(timeInputs, saveSettings);
 
   // Add pause timer functionality
   const pauseBtn = document.getElementById('pause-timer');
