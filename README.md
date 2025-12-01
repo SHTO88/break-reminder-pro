@@ -237,6 +237,9 @@ break-reminder-pro/
 ### Contributing
 See [CONTRIBUTING.md](CONTRIBUTING.md) for development guidelines, code style, and how to submit changes.
 
+### Creating Releases
+See [docs/RELEASE_GUIDE.md](docs/RELEASE_GUIDE.md) for instructions on creating new releases.
+
 </details>
 
 ---

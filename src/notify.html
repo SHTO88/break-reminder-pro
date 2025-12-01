@@ -274,6 +274,17 @@
           
           const { invoke } = window.__TAURI__.core;
           
+          // Resume media if auto-pause was enabled
+          try {
+            const settings = await invoke('load_settings');
+            if (settings && settings.auto_pause) {
+              console.log('🎵 Resuming media playback...');
+              await invoke('control_media', { action: 'play' });
+            }
+          } catch (error) {
+            console.error('Error resuming media:', error);
+          }
+          
           // Check if break ended early (before countdown finished)
           if (breakTimeRemaining > 0) {
             console.log('🏃 Break ended early with', breakTimeRemaining, 'seconds remaining');

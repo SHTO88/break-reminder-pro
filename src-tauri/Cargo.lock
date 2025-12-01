@@ -325,7 +325,7 @@ dependencies = [
 
 [[package]]
 name = "break-reminder-pro-app"
-version = "1.0.1"
+version = "1.0.3"
 dependencies = [
  "enigo",
  "serde",

@@ -437,6 +437,18 @@
       }
 
       try {
+        // Resume media if auto-pause was enabled
+        try {
+          const { invoke: invokeSettings } = window.__TAURI__.core;
+          const settings = await invokeSettings('load_settings');
+          if (settings && settings.auto_pause) {
+            console.log('🎵 Resuming media playback...');
+            await invoke('control_media', { action: 'play' });
+          }
+        } catch (error) {
+          console.error('Error resuming media:', error);
+        }
+
         // If this is an early return (user clicked button), notify main window
         if (isEarlyReturn) {
           console.log('🏃 Early return detected - notifying main window');

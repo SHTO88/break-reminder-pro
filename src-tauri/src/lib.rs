@@ -245,19 +245,46 @@ async fn control_media(action: String) -> Result<(), String> {
         }
     }
 
+    #[cfg(target_os = "windows")]
+    if action == "play" {
+        use windows::Media::Control::GlobalSystemMediaTransportControlsSessionManager;
+
+        println!("Attempting to play using Windows SMTC...");
+        let smtc_result = async {
+            let manager = GlobalSystemMediaTransportControlsSessionManager::RequestAsync()?.await?;
+            let session = manager.GetCurrentSession()?;
+            session.TryPlayAsync()?.await?;
+            Ok::<(), windows::core::Error>(())
+        }
+        .await;
+
+        match smtc_result {
+            Ok(_) => {
+                println!("✅ Resumed media using Windows SMTC");
+                return Ok(());
+            }
+            Err(e) => {
+                println!("⚠️ SMTC failed (no active session or other error): {:?}", e);
+                println!("Falling back to keyboard simulation...");
+            }
+        }
+    }
+
     use enigo::{Enigo, Key, KeyboardControllable};
     let mut enigo = Enigo::new();
 
     match action.as_str() {
         "pause" => {
-            // Use MediaStop instead of MediaPlayPause to avoid toggle behavior
-            // MediaStop will stop playing media and do nothing if already stopped
             println!("🛑 Sending MediaStop key (safer than toggle)");
             enigo.key_click(Key::MediaStop);
             Ok(())
         }
+        "play" => {
+            println!("▶️ Sending MediaPlayPause key to resume");
+            enigo.key_click(Key::MediaPlayPause);
+            Ok(())
+        }
         "playpause" => {
-            // Keep the toggle behavior for explicit play/pause requests
             println!("⏯️ Sending MediaPlayPause key (toggle)");
             enigo.key_click(Key::MediaPlayPause);
             Ok(())
