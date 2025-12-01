@@ -1,15 +1,15 @@
 use serde::{Deserialize, Serialize};
 use std::fs;
-use tauri::{Manager, WebviewUrl, WebviewWindowBuilder, AppHandle, WindowEvent};
 use tauri::menu::{Menu, MenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
+use tauri::{AppHandle, Manager, WebviewUrl, WebviewWindowBuilder, WindowEvent};
 
 // For autostart plugin
 use tauri_plugin_autostart::{MacosLauncher, ManagerExt};
 
 // Import our window manager module
 mod window_manager;
-use window_manager::{WindowManager, WindowConfig};
+use window_manager::{WindowConfig, WindowManager};
 
 #[derive(Serialize, Deserialize)]
 struct AppSettings {
@@ -32,7 +32,10 @@ struct AppSettings {
 #[tauri::command]
 fn force_break_window(app_handle: tauri::AppHandle, duration: Option<u32>) -> Result<(), String> {
     let break_duration = duration.unwrap_or(300);
-    println!("💥 Creating force break window with duration: {} seconds", break_duration);
+    println!(
+        "💥 Creating force break window with duration: {} seconds",
+        break_duration
+    );
 
     WindowManager::close_existing_window(&app_handle, "force_break");
     let config = WindowConfig::force_break(break_duration);
@@ -52,7 +55,10 @@ fn close_window(app_handle: tauri::AppHandle, label: String) -> Result<(), Strin
 #[tauri::command]
 fn notify_window(app_handle: tauri::AppHandle, duration: Option<u32>) -> Result<(), String> {
     let break_duration = duration.unwrap_or(600);
-    println!("🔔 Creating notify window with duration: {} seconds", break_duration);
+    println!(
+        "🔔 Creating notify window with duration: {} seconds",
+        break_duration
+    );
 
     WindowManager::close_existing_window(&app_handle, "notify");
     let config = WindowConfig::notify(&app_handle, break_duration);
@@ -60,9 +66,15 @@ fn notify_window(app_handle: tauri::AppHandle, duration: Option<u32>) -> Result<
 }
 
 #[tauri::command]
-fn pre_break_notification_window(app_handle: tauri::AppHandle, remaining_seconds: Option<u32>) -> Result<(), String> {
+fn pre_break_notification_window(
+    app_handle: tauri::AppHandle,
+    remaining_seconds: Option<u32>,
+) -> Result<(), String> {
     let seconds = remaining_seconds.unwrap_or(30);
-    println!("⏰ Creating pre-break window with {} seconds remaining...", seconds);
+    println!(
+        "⏰ Creating pre-break window with {} seconds remaining...",
+        seconds
+    );
 
     WindowManager::close_existing_window(&app_handle, "pre_break");
     let config = WindowConfig::pre_break(&app_handle, seconds);
@@ -98,7 +110,9 @@ async fn is_autostart_enabled(app_handle: tauri::AppHandle) -> Result<bool, Stri
 #[tauri::command]
 async fn hide_to_tray(app_handle: tauri::AppHandle) -> Result<(), String> {
     if let Some(window) = app_handle.get_webview_window("main") {
-        window.hide().map_err(|e| format!("Failed to hide window: {}", e))?;
+        window
+            .hide()
+            .map_err(|e| format!("Failed to hide window: {}", e))?;
         println!("🫥 Main window hidden to system tray");
     }
     Ok(())
@@ -107,8 +121,12 @@ async fn hide_to_tray(app_handle: tauri::AppHandle) -> Result<(), String> {
 #[tauri::command]
 async fn show_from_tray(app_handle: tauri::AppHandle) -> Result<(), String> {
     if let Some(window) = app_handle.get_webview_window("main") {
-        window.show().map_err(|e| format!("Failed to show window: {}", e))?;
-        window.set_focus().map_err(|e| format!("Failed to focus window: {}", e))?;
+        window
+            .show()
+            .map_err(|e| format!("Failed to show window: {}", e))?;
+        window
+            .set_focus()
+            .map_err(|e| format!("Failed to focus window: {}", e))?;
         println!("👁️ Main window restored from system tray");
     }
     Ok(())
@@ -129,7 +147,7 @@ fn get_app_version() -> String {
 #[tauri::command]
 async fn open_url(url: String) -> Result<(), String> {
     println!("🌐 Opening URL: {}", url);
-    
+
     #[cfg(target_os = "windows")]
     {
         std::process::Command::new("cmd")
@@ -137,7 +155,7 @@ async fn open_url(url: String) -> Result<(), String> {
             .spawn()
             .map_err(|e| format!("Failed to open URL: {}", e))?;
     }
-    
+
     #[cfg(target_os = "macos")]
     {
         std::process::Command::new("open")
@@ -145,7 +163,7 @@ async fn open_url(url: String) -> Result<(), String> {
             .spawn()
             .map_err(|e| format!("Failed to open URL: {}", e))?;
     }
-    
+
     #[cfg(target_os = "linux")]
     {
         std::process::Command::new("xdg-open")
@@ -153,7 +171,7 @@ async fn open_url(url: String) -> Result<(), String> {
             .spawn()
             .map_err(|e| format!("Failed to open URL: {}", e))?;
     }
-    
+
     Ok(())
 }
 
@@ -168,7 +186,8 @@ fn show_update_notification(
     println!("🔔 Showing update notification for version: {}", version);
 
     WindowManager::close_existing_window(&app_handle, "update_notification");
-    let config = WindowConfig::update_notification(&app_handle, version, notes, download_url, published_at);
+    let config =
+        WindowConfig::update_notification(&app_handle, version, notes, download_url, published_at);
     WindowManager::create_window(app_handle, config)
 }
 
@@ -197,13 +216,39 @@ fn lock_screen() -> Result<(), String> {
 }
 
 #[tauri::command]
-fn control_media(action: &str) -> Result<(), String> {
+async fn control_media(action: String) -> Result<(), String> {
+    println!("🎵 Media control requested: {}", action);
+
+    #[cfg(target_os = "windows")]
+    if action == "pause" {
+        use windows::Media::Control::GlobalSystemMediaTransportControlsSessionManager;
+
+        println!("Attempting to pause using Windows SMTC...");
+        // Run SMTC logic
+        let smtc_result = async {
+            let manager = GlobalSystemMediaTransportControlsSessionManager::RequestAsync()?.await?;
+            let session = manager.GetCurrentSession()?;
+            session.TryPauseAsync()?.await?;
+            Ok::<(), windows::core::Error>(())
+        }
+        .await;
+
+        match smtc_result {
+            Ok(_) => {
+                println!("✅ Paused media using Windows SMTC");
+                return Ok(());
+            }
+            Err(e) => {
+                println!("⚠️ SMTC failed (no active session or other error): {:?}", e);
+                println!("Falling back to keyboard simulation...");
+            }
+        }
+    }
+
     use enigo::{Enigo, Key, KeyboardControllable};
     let mut enigo = Enigo::new();
-    
-    println!("🎵 Media control requested: {}", action);
-    
-    match action {
+
+    match action.as_str() {
         "pause" => {
             // Use MediaStop instead of MediaPlayPause to avoid toggle behavior
             // MediaStop will stop playing media and do nothing if already stopped
@@ -273,7 +318,7 @@ fn play_chime() -> Result<(), String> {
 #[tauri::command]
 fn is_meeting_active() -> Result<bool, String> {
     use sysinfo::System;
-    
+
     // Check for desktop meeting applications
     let meeting_processes = [
         "zoom.exe",
@@ -282,17 +327,17 @@ fn is_meeting_active() -> Result<bool, String> {
         "webex.exe",
         "meet.exe",
     ];
-    
+
     let sys = System::new_all();
     let desktop_meeting_found = sys.processes().values().any(|proc| {
         let name = proc.name().to_lowercase();
         meeting_processes.iter().any(|mp| name.contains(mp))
     });
-    
+
     if desktop_meeting_found {
         return Ok(true);
     }
-    
+
     // Check for browser-based meetings (Windows only)
     #[cfg(target_os = "windows")]
     {
@@ -300,7 +345,7 @@ fn is_meeting_active() -> Result<bool, String> {
             return Ok(browser_meeting_found);
         }
     }
-    
+
     Ok(false)
 }
 
@@ -308,10 +353,10 @@ fn is_meeting_active() -> Result<bool, String> {
 fn check_browser_meetings() -> Result<bool, String> {
     use std::ffi::OsString;
     use std::os::windows::ffi::OsStringExt;
-    use winapi::um::winuser::{EnumWindows, GetWindowTextW, IsWindowVisible};
+    use winapi::shared::minwindef::{BOOL, FALSE, LPARAM, TRUE};
     use winapi::shared::windef::HWND;
-    use winapi::shared::minwindef::{BOOL, LPARAM, TRUE, FALSE};
-    
+    use winapi::um::winuser::{EnumWindows, GetWindowTextW, IsWindowVisible};
+
     // Meeting indicators to look for in browser window titles
     let meeting_indicators = [
         "google meet",
@@ -338,7 +383,7 @@ fn check_browser_meetings() -> Result<bool, String> {
         "facebook messenger rooms",
         "whatsapp web",
     ];
-    
+
     // Browser process names to check
     let browser_processes = [
         "chrome.exe",
@@ -349,47 +394,50 @@ fn check_browser_meetings() -> Result<bool, String> {
         "vivaldi.exe",
         "iexplore.exe",
     ];
-    
+
     // First check if any browsers are running
     let sys = sysinfo::System::new_all();
     let browser_running = sys.processes().values().any(|proc| {
         let name = proc.name().to_lowercase();
         browser_processes.iter().any(|bp| name.contains(bp))
     });
-    
+
     if !browser_running {
         return Ok(false);
     }
-    
+
     // Structure to pass data to the callback
     struct CallbackData {
         meeting_indicators: Vec<String>,
         found_meeting: bool,
     }
-    
+
     let mut callback_data = CallbackData {
-        meeting_indicators: meeting_indicators.iter().map(|s| s.to_lowercase()).collect(),
+        meeting_indicators: meeting_indicators
+            .iter()
+            .map(|s| s.to_lowercase())
+            .collect(),
         found_meeting: false,
     };
-    
+
     // Callback function for EnumWindows
     unsafe extern "system" fn enum_windows_proc(hwnd: HWND, lparam: LPARAM) -> BOOL {
         let callback_data = &mut *(lparam as *mut CallbackData);
-        
+
         // Only check visible windows
         if IsWindowVisible(hwnd) == 0 {
             return TRUE;
         }
-        
+
         // Get window title
         let mut title: [u16; 512] = [0; 512];
         let title_len = GetWindowTextW(hwnd, title.as_mut_ptr(), title.len() as i32);
-        
+
         if title_len > 0 {
             let title_os_string = OsString::from_wide(&title[..title_len as usize]);
             if let Ok(title_string) = title_os_string.into_string() {
                 let title_lower = title_string.to_lowercase();
-                
+
                 // Check if the window title contains any meeting indicators
                 for indicator in &callback_data.meeting_indicators {
                     if title_lower.contains(indicator) {
@@ -400,10 +448,10 @@ fn check_browser_meetings() -> Result<bool, String> {
                 }
             }
         }
-        
+
         TRUE // Continue enumeration
     }
-    
+
     // Enumerate all windows
     unsafe {
         EnumWindows(
@@ -411,7 +459,7 @@ fn check_browser_meetings() -> Result<bool, String> {
             &mut callback_data as *mut CallbackData as LPARAM,
         );
     }
-    
+
     Ok(callback_data.found_meeting)
 }
 
@@ -427,10 +475,10 @@ fn check_browser_meeting_debug() -> Result<String, String> {
                     Ok("No browser meeting detected".to_string())
                 }
             }
-            Err(e) => Ok(format!("Error checking browser meetings: {}", e))
+            Err(e) => Ok(format!("Error checking browser meetings: {}", e)),
         }
     }
-    
+
     #[cfg(not(target_os = "windows"))]
     {
         Ok("Browser meeting detection only supported on Windows".to_string())
@@ -557,7 +605,7 @@ fn meeting_detected_notification(app_handle: tauri::AppHandle) -> Result<(), Str
 #[tauri::command]
 fn break_ended_early(app_handle: tauri::AppHandle) -> Result<(), String> {
     println!("🏃 Break ended early - user returned");
-    
+
     // Try to notify the main window about early return
     if let Some(main_window) = app_handle.get_webview_window("main") {
         println!("📱 Found main window, calling handleEarlyBreakReturn");
@@ -568,7 +616,7 @@ fn break_ended_early(app_handle: tauri::AppHandle) -> Result<(), String> {
     } else {
         println!("❌ Main window not found!");
     }
-    
+
     Ok(())
 }
 
@@ -623,9 +671,9 @@ fn setup_system_tray(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> 
     let quit_item = MenuItem::with_id(app, "quit", "Quit Break Reminder Pro", true, None::<&str>)?;
     let show_item = MenuItem::with_id(app, "show", "Show Window", true, None::<&str>)?;
     let hide_item = MenuItem::with_id(app, "hide", "Hide to Tray", true, None::<&str>)?;
-    
+
     let menu = Menu::with_items(app, &[&show_item, &hide_item, &quit_item])?;
-    
+
     let _tray = TrayIconBuilder::with_id("main-tray")
         .tooltip("Break Reminder Pro - Click to toggle window")
         .icon(app.default_window_icon().unwrap().clone())
@@ -672,7 +720,7 @@ fn setup_system_tray(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> 
             }
         })
         .build(app)?;
-    
+
     println!("✅ System tray initialized successfully");
     Ok(())
 }
@@ -690,7 +738,7 @@ pub fn run() {
             if let Err(e) = setup_system_tray(app.handle()) {
                 println!("❌ Failed to setup system tray: {}", e);
             }
-            
+
             // Handle window close events to hide to tray instead of closing
             if let Some(window) = app.get_webview_window("main") {
                 let app_handle = app.handle().clone();
@@ -698,7 +746,7 @@ pub fn run() {
                     if let WindowEvent::CloseRequested { api, .. } = event {
                         // Prevent the window from closing
                         api.prevent_close();
-                        
+
                         // Hide the window instead
                         if let Some(window) = app_handle.get_webview_window("main") {
                             let _ = window.hide();
@@ -707,7 +755,7 @@ pub fn run() {
                     }
                 });
             }
-            
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
