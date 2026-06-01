@@ -5,6 +5,12 @@ All notable changes to Break Reminder Pro will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.4] - 2026-06-01
+
+### Fixed
+
+- Media that was already paused before a break no longer starts playing after the break ends. The app now checks playback state before pausing and only resumes if it was the one that paused it.
+
 ## [1.0.3] - 2025-12-02
 
 ### Added

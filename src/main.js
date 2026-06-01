@@ -419,7 +419,25 @@ async function handleBreakTime() {
 async function triggerMainBreak(breakMode, settings) {
   try {
     if (settings.auto_pause) {
-      await invoke("control_media", { action: "pause" });
+      // Check if media is actually playing before pausing, so we only resume
+      // after the break if we were the ones who paused it.
+      let mediaWasPlaying = false;
+      try {
+        mediaWasPlaying = await invoke("is_media_playing");
+      } catch (e) {
+        // If the check fails, assume playing to preserve previous behaviour
+        mediaWasPlaying = true;
+        console.warn('⚠️ Could not check media state, assuming playing:', e);
+      }
+      localStorage.setItem('mediaWasPlaying', mediaWasPlaying ? 'true' : 'false');
+      console.log(`🎵 Media was playing before break: ${mediaWasPlaying}`);
+
+      if (mediaWasPlaying) {
+        await invoke("control_media", { action: "pause" });
+      }
+    } else {
+      // auto_pause is off — make sure we never resume on break end
+      localStorage.setItem('mediaWasPlaying', 'false');
     }
 
     const breakDurationSeconds = getBreakDurationValue();

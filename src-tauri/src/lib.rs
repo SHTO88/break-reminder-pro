@@ -293,6 +293,46 @@ async fn control_media(action: String) -> Result<(), String> {
     }
 }
 
+/// Returns true if media is currently playing according to Windows SMTC.
+/// Falls back to false (assume not playing) if SMTC is unavailable.
+#[tauri::command]
+async fn is_media_playing() -> bool {
+    #[cfg(target_os = "windows")]
+    {
+        use windows::Media::Control::{
+            GlobalSystemMediaTransportControlsSessionManager,
+            GlobalSystemMediaTransportControlsSessionPlaybackStatus,
+        };
+
+        let result = async {
+            let manager =
+                GlobalSystemMediaTransportControlsSessionManager::RequestAsync()?.await?;
+            let session = manager.GetCurrentSession()?;
+            let playback_info = session.GetPlaybackInfo()?;
+            let status = playback_info.PlaybackStatus()?;
+            Ok::<bool, windows::core::Error>(
+                status == GlobalSystemMediaTransportControlsSessionPlaybackStatus::Playing,
+            )
+        }
+        .await;
+
+        match result {
+            Ok(playing) => {
+                println!("🎵 Media playing state: {}", playing);
+                return playing;
+            }
+            Err(e) => {
+                println!("⚠️ Could not read SMTC playback state: {:?}", e);
+                // No active SMTC session means nothing is playing
+                return false;
+            }
+        }
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    false
+}
+
 #[tauri::command]
 fn play_chime() -> Result<(), String> {
     println!("🔔 Playing chime sound...");
@@ -789,6 +829,7 @@ pub fn run() {
             greet,
             lock_screen,
             control_media,
+            is_media_playing,
             play_chime,
             is_meeting_active,
             check_browser_meeting_debug,
