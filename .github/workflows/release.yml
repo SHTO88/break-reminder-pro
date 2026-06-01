@@ -32,43 +32,55 @@ jobs:
             echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
           fi
       
+      - name: Extract changelog for version
+        id: changelog
+        run: |
+          VERSION="${{ steps.get_version.outputs.VERSION }}"
+          VERSION_NUMBER="${VERSION#v}"
+          # Extract the block between this version header and the next one
+          NOTES=$(awk "/^## \[${VERSION_NUMBER}\]/{found=1; next} found && /^## \[/{exit} found{print}" CHANGELOG.md)
+          # Escape for GitHub Actions multiline output
+          echo "NOTES<<EOF" >> $GITHUB_OUTPUT
+          echo "$NOTES" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
       - name: Create Release
         id: create-release
         uses: actions/github-script@v7
         with:
           script: |
-            // Get previous tag for changelog
+            // Get previous tag for changelog link
             const tags = await github.rest.repos.listTags({
               owner: context.repo.owner,
               repo: context.repo.repo,
               per_page: 2
             });
             const previousTag = tags.data.length > 1 ? tags.data[1].name : 'v1.0.0';
-            
+
+            const changelogNotes = `${{ steps.changelog.outputs.NOTES }}`.trim();
+
+            const body = `## What's New in ${{ steps.get_version.outputs.VERSION }}
+
+${changelogNotes}
+
+### 📦 Installation
+1. Download the appropriate installer for your system below
+2. Run the installer and follow the setup instructions
+3. Launch Break Reminder Pro from your Start Menu or Desktop
+
+### 🔄 Updating
+If you have a previous version installed, the installer will automatically update your existing installation while preserving your settings.
+
+---
+
+**Full Changelog**: https://github.com/${{ github.repository }}/compare/${previousTag}...${{ steps.get_version.outputs.VERSION }}`;
+
             const { data } = await github.rest.repos.createRelease({
               owner: context.repo.owner,
               repo: context.repo.repo,
               tag_name: '${{ steps.get_version.outputs.VERSION }}',
               name: 'Break Reminder Pro ${{ steps.get_version.outputs.VERSION }}',
-              body: `## What's New in ${{ steps.get_version.outputs.VERSION }}
-
-            ### 🎉 Features
-            - New features and improvements
-
-            ### 🐛 Bug Fixes
-            - Various bug fixes and stability improvements
-
-            ### 📦 Installation
-            1. Download the appropriate installer for your system below
-            2. Run the installer and follow the setup instructions
-            3. Launch Break Reminder Pro from your Start Menu or Desktop
-
-            ### 🔄 Updating
-            If you have a previous version installed, the installer will automatically update your existing installation while preserving your settings.
-
-            ---
-            
-            **Full Changelog**: https://github.com/${{ github.repository }}/compare/${previousTag}...${{ steps.get_version.outputs.VERSION }}`,
+              body,
               draft: false,
               prerelease: false
             });
