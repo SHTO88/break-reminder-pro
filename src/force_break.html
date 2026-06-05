@@ -146,6 +146,10 @@
       left: 50%;
       transform: translateX(-50%);
       z-index: 2;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 12px;
     }
 
     .unlock-btn {
@@ -164,6 +168,29 @@
       background: rgba(255, 255, 255, 0.2);
       border-color: rgba(255, 255, 255, 0.4);
       transform: translateY(-2px);
+    }
+
+    .skip-media-btn {
+      background: transparent;
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      color: #666;
+      padding: 6px 16px;
+      border-radius: 20px;
+      font-size: 0.75rem;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      backdrop-filter: blur(10px);
+    }
+
+    .skip-media-btn:hover {
+      border-color: rgba(255, 255, 255, 0.3);
+      color: #999;
+    }
+
+    .skip-media-btn.active {
+      border-color: #ef4444;
+      color: #ef4444;
+      background: rgba(239, 68, 68, 0.1);
     }
 
     /* Math modal */
@@ -340,6 +367,7 @@
   </div>
 
   <div class="unlock-container" id="unlock-container" style="display: none;">
+    <button class="skip-media-btn" id="skip-media-btn">⏸ Keep media paused after break</button>
     <button class="unlock-btn" id="unlock-btn">Early Return</button>
   </div>
 
@@ -373,12 +401,14 @@
     let focusMode = false;
     let earlyReturnVisible = false;
     let currentAnswer = 0;
+    let skipMediaResume = false; // one-time flag, resets each break
 
     // DOM elements
     const countdownDisplay = document.getElementById('countdown-display');
     const progressCircle = document.getElementById('progress-circle');
     const unlockBtn = document.getElementById('unlock-btn');
     const unlockContainer = document.getElementById('unlock-container');
+    const skipMediaBtn = document.getElementById('skip-media-btn');
     const mathModal = document.getElementById('math-modal');
     const mathProblem = document.getElementById('math-problem');
     const mathInput = document.getElementById('math-input');
@@ -427,7 +457,7 @@
 
     function toggleEarlyReturn() {
       earlyReturnVisible = !earlyReturnVisible;
-      unlockContainer.style.display = earlyReturnVisible ? 'block' : 'none';
+      unlockContainer.style.display = earlyReturnVisible ? 'flex' : 'none';
       console.log('Early return button:', earlyReturnVisible ? 'visible' : 'hidden');
     }
 
@@ -437,19 +467,21 @@
       }
 
       try {
-        // Resume media only if it was playing before the break started
-        // and the screen is not currently locked
+        // Resume media only if it was playing before the break started,
+        // the screen is not locked, and the user hasn't chosen to skip resume
         try {
           const { invoke: invokeSettings } = window.__TAURI__.core;
           const settings = await invokeSettings('load_settings');
           const mediaWasPlaying = localStorage.getItem('mediaWasPlaying') === 'true';
           const screenLocked = await invoke('is_screen_locked');
-          if (settings && settings.auto_pause && mediaWasPlaying && !screenLocked) {
+          if (settings && settings.auto_pause && mediaWasPlaying && !screenLocked && !skipMediaResume) {
             console.log('🎵 Resuming media playback (was playing before break)...');
             await invoke('control_media', { action: 'play' });
             localStorage.removeItem('mediaWasPlaying');
           } else {
-            if (screenLocked) {
+            if (skipMediaResume) {
+              console.log('⏸ Skipping media resume (user chose to keep paused)');
+            } else if (screenLocked) {
               console.log('🔒 Skipping media resume (screen is locked)');
             } else {
               console.log('🎵 Skipping media resume (was not playing before break)');
@@ -538,6 +570,15 @@
     mathSubmit.addEventListener('click', checkAnswer);
     mathCancel.addEventListener('click', hideMathModal);
 
+    skipMediaBtn.addEventListener('click', () => {
+      skipMediaResume = !skipMediaResume;
+      skipMediaBtn.classList.toggle('active', skipMediaResume);
+      skipMediaBtn.textContent = skipMediaResume
+        ? '▶ Resume media after break'
+        : '⏸ Keep media paused after break';
+      console.log('⏸ Skip media resume:', skipMediaResume);
+    });
+
     mathInput.addEventListener('keypress', (e) => {
       if (e.key === 'Enter') checkAnswer();
     });
@@ -580,7 +621,7 @@
     });
 
     // Initialize
-    function init() {
+    async function init() {
       console.log('=== FORCE BREAK WINDOW INITIALIZATION ===');
       console.log('Current URL:', window.location.href);
       console.log('URL search:', window.location.search);
@@ -593,6 +634,17 @@
 
       initProgressCircle();
       updateCountdown();
+
+      // Hide skip-media button if auto_pause is not enabled or no media was playing
+      try {
+        const settings = await invoke('load_settings');
+        const mediaWasPlaying = localStorage.getItem('mediaWasPlaying') === 'true';
+        if (!settings || !settings.auto_pause || !mediaWasPlaying) {
+          skipMediaBtn.style.display = 'none';
+        }
+      } catch (e) {
+        skipMediaBtn.style.display = 'none';
+      }
 
       console.log('✅ Force break UI ready and visible');
 

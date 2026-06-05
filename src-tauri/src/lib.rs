@@ -216,24 +216,23 @@ fn lock_screen() -> Result<(), String> {
 }
 
 /// Returns true if the Windows session is currently locked (lock screen is active).
-/// Uses OpenInputDesktop: if the calling thread can't open the interactive desktop,
-/// the workstation is locked.
+/// Detects the lock screen by checking if LogonUI.exe is running — Windows always
+/// launches this process when the workstation is locked, regardless of desktop access.
 #[tauri::command]
 fn is_screen_locked() -> bool {
     #[cfg(target_os = "windows")]
     {
-        use winapi::um::winuser::{CloseDesktop, OpenInputDesktop, DF_ALLOWOTHERACCOUNTHOOK};
-        unsafe {
-            let hdesk = OpenInputDesktop(DF_ALLOWOTHERACCOUNTHOOK, 0, 0x0200 /* DESKTOP_READOBJECTS */);
-            if hdesk.is_null() {
-                // Cannot open the input desktop — session is locked
-                println!("🔒 Screen is locked (OpenInputDesktop returned null)");
-                return true;
-            }
-            CloseDesktop(hdesk);
+        use sysinfo::System;
+        let sys = System::new_all();
+        let locked = sys.processes().values().any(|proc| {
+            proc.name().to_lowercase() == "logonui.exe"
+        });
+        if locked {
+            println!("🔒 Screen is locked (LogonUI.exe detected)");
+        } else {
             println!("🔓 Screen is not locked");
-            false
         }
+        locked
     }
     #[cfg(not(target_os = "windows"))]
     false
