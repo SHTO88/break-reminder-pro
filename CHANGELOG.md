@@ -5,6 +5,12 @@ All notable changes to Break Reminder Pro will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.5] - 2026-06-05
+
+### Fixed
+
+- Media playback is no longer resumed after a break if the screen is locked when the break ends.
+
 ## [1.0.4] - 2026-06-01
 
 ### Fixed

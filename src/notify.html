@@ -275,15 +275,21 @@
           const { invoke } = window.__TAURI__.core;
           
           // Resume media only if it was playing before the break started
+          // and the screen is not currently locked
           try {
             const settings = await invoke('load_settings');
             const mediaWasPlaying = localStorage.getItem('mediaWasPlaying') === 'true';
-            if (settings && settings.auto_pause && mediaWasPlaying) {
+            const screenLocked = await invoke('is_screen_locked');
+            if (settings && settings.auto_pause && mediaWasPlaying && !screenLocked) {
               console.log('🎵 Resuming media playback (was playing before break)...');
               await invoke('control_media', { action: 'play' });
               localStorage.removeItem('mediaWasPlaying');
             } else {
-              console.log('🎵 Skipping media resume (was not playing before break)');
+              if (screenLocked) {
+                console.log('🔒 Skipping media resume (screen is locked)');
+              } else {
+                console.log('🎵 Skipping media resume (was not playing before break)');
+              }
               localStorage.removeItem('mediaWasPlaying');
             }
           } catch (error) {

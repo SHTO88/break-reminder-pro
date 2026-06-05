@@ -215,6 +215,30 @@ fn lock_screen() -> Result<(), String> {
     }
 }
 
+/// Returns true if the Windows session is currently locked (lock screen is active).
+/// Uses OpenInputDesktop: if the calling thread can't open the interactive desktop,
+/// the workstation is locked.
+#[tauri::command]
+fn is_screen_locked() -> bool {
+    #[cfg(target_os = "windows")]
+    {
+        use winapi::um::winuser::{CloseDesktop, OpenInputDesktop, DF_ALLOWOTHERACCOUNTHOOK};
+        unsafe {
+            let hdesk = OpenInputDesktop(DF_ALLOWOTHERACCOUNTHOOK, 0, 0x0200 /* DESKTOP_READOBJECTS */);
+            if hdesk.is_null() {
+                // Cannot open the input desktop — session is locked
+                println!("🔒 Screen is locked (OpenInputDesktop returned null)");
+                return true;
+            }
+            CloseDesktop(hdesk);
+            println!("🔓 Screen is not locked");
+            false
+        }
+    }
+    #[cfg(not(target_os = "windows"))]
+    false
+}
+
 #[tauri::command]
 async fn control_media(action: String) -> Result<(), String> {
     println!("🎵 Media control requested: {}", action);
@@ -828,6 +852,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             greet,
             lock_screen,
+            is_screen_locked,
             control_media,
             is_media_playing,
             play_chime,
