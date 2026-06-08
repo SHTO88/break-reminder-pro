@@ -5,6 +5,16 @@ All notable changes to Break Reminder Pro will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.7] - 2026-06-08
+
+### Fixed
+
+- End-of-break chime now actually plays when the setting is enabled. It was wired up in settings but never called at break end.
+
+### Added
+
+- Press `S` during a force break to toggle "Keep media paused after break". Also auto-reveals the controls panel so you can see the current state.
+
 ## [1.0.6] - 2026-06-05
 
 ### Added

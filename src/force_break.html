@@ -349,6 +349,7 @@
 <body>
   <div class="instructions">
     Press 'F' to toggle focus mode (hide cursor)<br>
+    Press 'S' to toggle keep media paused<br>
     ESC to show/hide early return option
   </div>
 
@@ -474,6 +475,17 @@
           const settings = await invokeSettings('load_settings');
           const mediaWasPlaying = localStorage.getItem('mediaWasPlaying') === 'true';
           const screenLocked = await invoke('is_screen_locked');
+
+          // Play chime if enabled
+          if (settings && settings.break_chime) {
+            try {
+              await invoke('play_chime');
+              console.log('🔔 Break end chime played');
+            } catch (e) {
+              console.warn('⚠️ Could not play chime:', e);
+            }
+          }
+
           if (settings && settings.auto_pause && mediaWasPlaying && !screenLocked && !skipMediaResume) {
             console.log('🎵 Resuming media playback (was playing before break)...');
             await invoke('control_media', { action: 'play' });
@@ -589,6 +601,18 @@
           hideMathModal();
         } else {
           toggleEarlyReturn();
+        }
+        e.preventDefault();
+      }
+
+      if (e.key === 's' || e.key === 'S') {
+        // Only toggle if media was playing
+        if (skipMediaBtn.style.display !== 'none') {
+          // Show the container if not already visible
+          if (!earlyReturnVisible) {
+            toggleEarlyReturn();
+          }
+          skipMediaBtn.click();
         }
         e.preventDefault();
       }

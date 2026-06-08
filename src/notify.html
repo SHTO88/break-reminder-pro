@@ -280,6 +280,17 @@
             const settings = await invoke('load_settings');
             const mediaWasPlaying = localStorage.getItem('mediaWasPlaying') === 'true';
             const screenLocked = await invoke('is_screen_locked');
+
+            // Play chime if enabled
+            if (settings && settings.break_chime) {
+              try {
+                await invoke('play_chime');
+                console.log('🔔 Break end chime played');
+              } catch (e) {
+                console.warn('⚠️ Could not play chime:', e);
+              }
+            }
+
             if (settings && settings.auto_pause && mediaWasPlaying && !screenLocked) {
               console.log('🎵 Resuming media playback (was playing before break)...');
               await invoke('control_media', { action: 'play' });
