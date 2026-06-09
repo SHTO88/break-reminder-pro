@@ -5,6 +5,21 @@ All notable changes to Break Reminder Pro will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.9] - 2026-06-09
+
+### Fixed
+
+- Force break screen no longer freezes on 0:00 for 1-2 seconds before dismissing. Settings and screen-lock checks now run in parallel, and the window closes before media resume so the desktop appears immediately.
+- End-of-break chime was silent after the v1.0.8 refactor. Chime now plays before the window closes so the webview context is still active.
+
+## [1.0.8] - 2026-06-08
+
+### Fixed
+
+- App crashed silently on launch on some Windows machines (v1.0.5–v1.0.7). Root cause was `OpenInputDesktop` API call used for screen lock detection — on machines with stricter security policies it caused an access violation instead of returning null. Replaced with process-based detection (LogonUI.exe).
+- Corrupted capabilities config (UTF-8 BOM) introduced in v1.0.6 that prevented the app from starting.
+- Tray icon setup no longer panics if the default window icon is missing in the bundle.
+
 ## [1.0.7] - 2026-06-08
 
 ### Fixed

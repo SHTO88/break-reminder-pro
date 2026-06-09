@@ -1,6 +1,6 @@
 [package]
 name = "break-reminder-pro-app"
-version = "1.0.7"
+version = "1.0.9"
 description = "Privacy-respecting, open source break reminder for Windows. Helps maintain health and productivity with customizable break intervals, smart meeting detection, and system tray integration. No ads, no tracking, no data collection."
 authors = ["Break Reminder Pro Contributors"]
 edition = "2021"
@@ -37,6 +37,9 @@ tauri-plugin-autostart = "2"
 enigo = "0.1"
 # For meeting detection
 sysinfo = "0.30"
+# For file logging
+log = "0.4"
+simplelog = "0.12"
 # For browser window title detection on Windows
 [target.'cfg(windows)'.dependencies]
 winapi = { version = "0.3", features = ["winuser", "processthreadsapi", "handleapi", "psapi"] }

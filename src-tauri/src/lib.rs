@@ -1,5 +1,10 @@
+use log::{error, info};
 use serde::{Deserialize, Serialize};
+use simplelog::{
+    ColorChoice, CombinedLogger, Config, LevelFilter, TermLogger, TerminalMode, WriteLogger,
+};
 use std::fs;
+use std::fs::OpenOptions;
 use tauri::menu::{Menu, MenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{AppHandle, Manager, WebviewUrl, WebviewWindowBuilder, WindowEvent};
@@ -10,6 +15,49 @@ use tauri_plugin_autostart::{MacosLauncher, ManagerExt};
 // Import our window manager module
 mod window_manager;
 use window_manager::{WindowConfig, WindowManager};
+
+/// Initialise file + terminal logging.
+/// Log file goes to: <AppData>\Break Reminder Pro\app.log
+/// Falls back to a temp-dir log if the app data dir is unavailable.
+fn init_logging() {
+    // Determine log file path
+    let log_path = {
+        let appdata = std::env::var("APPDATA").unwrap_or_else(|_| std::env::temp_dir().to_string_lossy().into_owned());
+        let dir = std::path::PathBuf::from(appdata).join("Break Reminder Pro");
+        let _ = fs::create_dir_all(&dir);
+        dir.join("app.log")
+    };
+
+    // Open (or create) the log file in append mode
+    let log_file = OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&log_path)
+        .expect("Failed to open log file");
+
+    let log_level = if cfg!(debug_assertions) {
+        LevelFilter::Debug
+    } else {
+        LevelFilter::Info
+    };
+
+    CombinedLogger::init(vec![
+        // Terminal logger — visible in dev, no-op in release (no console)
+        TermLogger::new(log_level, Config::default(), TerminalMode::Mixed, ColorChoice::Auto),
+        // File logger — always active, captures release crashes
+        WriteLogger::new(LevelFilter::Debug, Config::default(), log_file),
+    ])
+    .unwrap_or_else(|_| {
+        // If logging init fails (e.g. already initialised), silently continue
+    });
+
+    info!(
+        "=== Break Reminder Pro v{} starting ===",
+        env!("CARGO_PKG_VERSION")
+    );
+    info!("Log file: {}", log_path.display());
+}
+
 
 #[derive(Serialize, Deserialize)]
 struct AppSettings {
@@ -764,9 +812,14 @@ fn setup_system_tray(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> 
 
     let menu = Menu::with_items(app, &[&show_item, &hide_item, &quit_item])?;
 
+    let icon = app
+        .default_window_icon()
+        .ok_or("No default window icon found")?
+        .clone();
+
     let _tray = TrayIconBuilder::with_id("main-tray")
         .tooltip("Break Reminder Pro - Click to toggle window")
-        .icon(app.default_window_icon().unwrap().clone())
+        .icon(icon)
         .menu(&menu)
         .show_menu_on_left_click(false)
         .on_menu_event(move |app, event| match event.id.as_ref() {
@@ -817,6 +870,27 @@ fn setup_system_tray(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> 
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // Initialise logging before anything else so crashes are captured
+    init_logging();
+
+    // Install a panic hook that writes to the log file before the process dies
+    std::panic::set_hook(Box::new(|info| {
+        let msg = match info.payload().downcast_ref::<&str>() {
+            Some(s) => *s,
+            None => match info.payload().downcast_ref::<String>() {
+                Some(s) => s.as_str(),
+                None => "unknown panic payload",
+            },
+        };
+        let location = info
+            .location()
+            .map(|l| format!("{}:{}:{}", l.file(), l.line(), l.column()))
+            .unwrap_or_else(|| "unknown location".to_string());
+        error!("💥 PANIC at {}: {}", location, msg);
+    }));
+
+    info!("Initialising Tauri application...");
+
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_autostart::init(
@@ -826,24 +900,26 @@ pub fn run() {
         .setup(|app| {
             // Setup system tray
             if let Err(e) = setup_system_tray(app.handle()) {
-                println!("❌ Failed to setup system tray: {}", e);
+                error!("❌ Failed to setup system tray: {}", e);
+            } else {
+                info!("✅ System tray initialized");
             }
 
             // Handle window close events to hide to tray instead of closing
             if let Some(window) = app.get_webview_window("main") {
+                info!("✅ Main window found, attaching close handler");
                 let app_handle = app.handle().clone();
                 window.on_window_event(move |event| {
                     if let WindowEvent::CloseRequested { api, .. } = event {
-                        // Prevent the window from closing
                         api.prevent_close();
-
-                        // Hide the window instead
                         if let Some(window) = app_handle.get_webview_window("main") {
                             let _ = window.hide();
-                            println!("🫥 Main window hidden to tray instead of closing");
+                            info!("🫥 Main window hidden to tray instead of closing");
                         }
                     }
                 });
+            } else {
+                error!("❌ Main window not found during setup!");
             }
 
             Ok(())

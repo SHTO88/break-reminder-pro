@@ -467,53 +467,61 @@
         clearInterval(timerInterval);
       }
 
-      try {
-        // Resume media only if it was playing before the break started,
-        // the screen is not locked, and the user hasn't chosen to skip resume
+      // Notify main window of early return before closing (needs window to exist)
+      if (isEarlyReturn) {
         try {
-          const { invoke: invokeSettings } = window.__TAURI__.core;
-          const settings = await invokeSettings('load_settings');
-          const mediaWasPlaying = localStorage.getItem('mediaWasPlaying') === 'true';
-          const screenLocked = await invoke('is_screen_locked');
-
-          // Play chime if enabled
-          if (settings && settings.break_chime) {
-            try {
-              await invoke('play_chime');
-              console.log('🔔 Break end chime played');
-            } catch (e) {
-              console.warn('⚠️ Could not play chime:', e);
-            }
-          }
-
-          if (settings && settings.auto_pause && mediaWasPlaying && !screenLocked && !skipMediaResume) {
-            console.log('🎵 Resuming media playback (was playing before break)...');
-            await invoke('control_media', { action: 'play' });
-            localStorage.removeItem('mediaWasPlaying');
-          } else {
-            if (skipMediaResume) {
-              console.log('⏸ Skipping media resume (user chose to keep paused)');
-            } else if (screenLocked) {
-              console.log('🔒 Skipping media resume (screen is locked)');
-            } else {
-              console.log('🎵 Skipping media resume (was not playing before break)');
-            }
-            localStorage.removeItem('mediaWasPlaying');
-          }
-        } catch (error) {
-          console.error('Error resuming media:', error);
-        }
-
-        // If this is an early return (user clicked button), notify main window
-        if (isEarlyReturn) {
-          console.log('🏃 Early return detected - notifying main window');
           await invoke('break_ended_early');
+          console.log('🏃 Early return notified');
+        } catch (e) {
+          console.error('Error notifying early return:', e);
         }
+      }
 
+      // Fetch settings and screen lock state in parallel — do this before closing
+      let settings = null;
+      let screenLocked = false;
+      try {
+        const { invoke: invokeSettings } = window.__TAURI__.core;
+        [settings, screenLocked] = await Promise.all([
+          invokeSettings('load_settings'),
+          invoke('is_screen_locked'),
+        ]);
+      } catch (e) {
+        console.error('Error fetching pre-close state:', e);
+      }
+
+      // Play chime before closing so the window context is still alive
+      if (settings && settings.break_chime) {
+        try {
+          await invoke('play_chime');
+          console.log('🔔 Break end chime played');
+        } catch (e) {
+          console.warn('⚠️ Could not play chime:', e);
+        }
+      }
+
+      // Close the window — media resume happens after, user sees desktop immediately
+      try {
         await WindowUtils.closeWindow('force_break');
       } catch (error) {
         console.error('Error closing window:', error);
         window.close();
+      }
+
+      // Resume media after the window is gone
+      try {
+        const mediaWasPlaying = localStorage.getItem('mediaWasPlaying') === 'true';
+        if (settings && settings.auto_pause && mediaWasPlaying && !screenLocked && !skipMediaResume) {
+          console.log('🎵 Resuming media playback...');
+          await invoke('control_media', { action: 'play' });
+        } else {
+          if (skipMediaResume) console.log('⏸ Skipping media resume (user chose to keep paused)');
+          else if (screenLocked) console.log('🔒 Skipping media resume (screen is locked)');
+          else console.log('🎵 Skipping media resume (was not playing before break)');
+        }
+        localStorage.removeItem('mediaWasPlaying');
+      } catch (error) {
+        console.error('Error resuming media:', error);
       }
     }
 
