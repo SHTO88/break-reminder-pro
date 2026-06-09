@@ -806,17 +806,20 @@ fn show_index_window(app_handle: tauri::AppHandle) -> Result<(), String> {
 }
 
 fn setup_system_tray(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
+    info!("Tray: creating menu items...");
     let quit_item = MenuItem::with_id(app, "quit", "Quit Break Reminder Pro", true, None::<&str>)?;
     let show_item = MenuItem::with_id(app, "show", "Show Window", true, None::<&str>)?;
     let hide_item = MenuItem::with_id(app, "hide", "Hide to Tray", true, None::<&str>)?;
-
+    info!("Tray: assembling menu...");
     let menu = Menu::with_items(app, &[&show_item, &hide_item, &quit_item])?;
 
+    info!("Tray: loading icon...");
     let icon = app
         .default_window_icon()
         .ok_or("No default window icon found")?
         .clone();
 
+    info!("Tray: building tray icon...");
     let _tray = TrayIconBuilder::with_id("main-tray")
         .tooltip("Break Reminder Pro - Click to toggle window")
         .icon(icon)
@@ -864,7 +867,7 @@ fn setup_system_tray(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> 
         })
         .build(app)?;
 
-    println!("✅ System tray initialized successfully");
+    info!("✅ System tray built successfully");
     Ok(())
 }
 
@@ -911,6 +914,7 @@ pub fn run() {
                 info!("✅ System tray initialized");
             }
 
+            info!("Step 4a: Looking for main window...");
             // Handle window close events to hide to tray instead of closing
             if let Some(window) = app.get_webview_window("main") {
                 info!("✅ Main window found, attaching close handler");

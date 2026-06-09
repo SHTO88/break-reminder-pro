@@ -1,8 +1,5 @@
 [build]
-# Use faster linker on Windows
-rustflags = [
-  "-C", "link-arg=-fuse-ld=lld",  # Use LLD linker for faster linking
-]
+# Standard build configuration
 
 [cargo-new]
 vcs = "none"
@@ -20,5 +17,4 @@ git-fetch-with-cli = true
 [target.x86_64-pc-windows-msvc]
 rustflags = [
   "-C", "link-arg=/DEBUG:NONE",     # Disable debug info in linking for speed
-  "-C", "target-cpu=native",        # Optimize for your specific CPU
 ] 
