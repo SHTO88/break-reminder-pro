@@ -74,6 +74,24 @@ jobs:
               `**Full Changelog**: https://github.com/${context.repo.owner}/${context.repo.repo}/compare/${previousTag}...${version}`
             ].join('\n');
 
+            // Delete existing release for this tag if it exists (handles retriggered runs)
+            try {
+              const existing = await github.rest.repos.getReleaseByTag({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                tag: version
+              });
+              console.log(`Deleting existing release ${existing.data.id} for ${version}`);
+              await github.rest.repos.deleteRelease({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                release_id: existing.data.id
+              });
+            } catch (e) {
+              if (e.status !== 404) throw e;
+              // No existing release, that's fine
+            }
+
             const { data } = await github.rest.repos.createRelease({
               owner: context.repo.owner,
               repo: context.repo.repo,
