@@ -419,40 +419,26 @@ async function handleBreakTime() {
 async function triggerMainBreak(breakMode, settings) {
   try {
     if (settings.auto_pause) {
-      // Check if media is actually playing before pausing, so we only resume
-      // after the break if we were the ones who paused it.
-      let mediaWasPlaying = false;
-      try {
-        mediaWasPlaying = await invoke("is_media_playing");
-      } catch (e) {
-        // If the check fails, assume playing to preserve previous behaviour
-        mediaWasPlaying = true;
-        console.warn('⚠️ Could not check media state, assuming playing:', e);
-      }
-      localStorage.setItem('mediaWasPlaying', mediaWasPlaying ? 'true' : 'false');
-      console.log(`🎵 Media was playing before break: ${mediaWasPlaying}`);
-
-      if (mediaWasPlaying) {
-        await invoke("control_media", { action: "pause" });
-      }
+      // Always call control_media — the Rust side handles both VLC (WM_APPCOMMAND)
+      // and SMTC players (Spotify, YouTube, etc.) independently.
+      // State is stored server-side via set_media_was_playing so all webview windows
+      // (force_break, notify) can read it — localStorage is per-webview and not shared.
+      console.log('🎵 auto_pause enabled — pausing media and recording state');
+      await invoke('set_media_was_playing', { wasPlaying: true });
+      await invoke('control_media', { action: 'pause' });
     } else {
-      // auto_pause is off — make sure we never resume on break end
-      localStorage.setItem('mediaWasPlaying', 'false');
+      // auto_pause is off — record that so break windows skip resume
+      await invoke('set_media_was_playing', { wasPlaying: false });
     }
 
     const breakDurationSeconds = getBreakDurationValue();
-    console.log(`Triggering break with duration: ${breakDurationSeconds} seconds`);
-    console.log(`Break mode: ${breakMode}`);
-    console.log(`Settings break duration: ${settings.break_duration_minutes}m ${settings.break_duration_seconds}s`);
 
     switch (breakMode) {
       case "force":
-        console.log(`Calling force_break_window with duration: ${breakDurationSeconds}`);
         await invoke("force_break_window", { duration: breakDurationSeconds });
         document.getElementById('timer-status').textContent = `Force break window opened - ${breakDurationSeconds}s break!`;
         break;
       case "notify":
-        console.log(`Calling notify_window with duration: ${breakDurationSeconds}`);
         await invoke("notify_window", { duration: breakDurationSeconds });
         document.getElementById('timer-status').textContent = `Break notification shown - ${breakDurationSeconds}s break!`;
         break;

@@ -1,6 +1,6 @@
 [package]
 name = "break-reminder-pro-app"
-version = "1.1.0"
+version = "1.1.1"
 description = "Privacy-respecting, open source break reminder for Windows. Helps maintain health and productivity with customizable break intervals, smart meeting detection, and system tray integration. No ads, no tracking, no data collection."
 authors = ["Break Reminder Pro Contributors"]
 edition = "2021"
@@ -43,7 +43,7 @@ simplelog = "0.12"
 # For browser window title detection on Windows
 [target.'cfg(windows)'.dependencies]
 winapi = { version = "0.3", features = ["winuser", "processthreadsapi", "handleapi", "psapi"] }
-windows = { version = "0.52", features = ["Media_Control", "Foundation"] }
+windows = { version = "0.52", features = ["Media_Control", "Foundation", "Foundation_Collections", "Win32_Media_Audio", "Win32_System_Com", "Win32_UI_Shell", "Win32_Foundation", "Win32_System_Com_StructuredStorage", "Win32_System_Variant"] }
 
 # Development profile: faster compilation with some optimizations
 [profile.dev]

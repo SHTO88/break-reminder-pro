@@ -5,36 +5,88 @@ use simplelog::{
 };
 use std::fs;
 use std::fs::OpenOptions;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Mutex, OnceLock};
 use tauri::menu::{Menu, MenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{AppHandle, Manager, WebviewUrl, WebviewWindowBuilder, WindowEvent};
 
 // For autostart plugin
-use tauri_plugin_autostart::{MacosLauncher, ManagerExt};
+use tauri_plugin_autostart::ManagerExt;
 
 // Import our window manager module
 mod window_manager;
 use window_manager::{WindowConfig, WindowManager};
 
+/// Shared flag: was media playing when the break started?
+/// Written by main window before break, read by break windows on close.
+/// Using AtomicBool so it's safe to access from any thread/webview.
+static MEDIA_WAS_PLAYING: AtomicBool = AtomicBool::new(false);
+
+/// Was VLC playing when we sent the pause command? Set by Core Audio session check.
+static VLC_WAS_PLAYING: AtomicBool = AtomicBool::new(false);
+
+/// SMTC sources that were paused by us at break start.
+static SMTC_PAUSED_SOURCES: OnceLock<Mutex<Vec<String>>> = OnceLock::new();
+
+fn smtc_paused_sources() -> &'static Mutex<Vec<String>> {
+    SMTC_PAUSED_SOURCES.get_or_init(|| Mutex::new(Vec::new()))
+}
+
+#[tauri::command]
+fn set_media_was_playing(was_playing: bool) {
+    MEDIA_WAS_PLAYING.store(was_playing, Ordering::SeqCst);
+}
+
+#[tauri::command]
+fn get_media_was_playing() -> bool {
+    MEDIA_WAS_PLAYING.load(Ordering::SeqCst)
+}
+
+#[tauri::command]
+fn clear_media_was_playing() {
+    MEDIA_WAS_PLAYING.store(false, Ordering::SeqCst);
+    VLC_WAS_PLAYING.store(false, Ordering::SeqCst);
+    if let Ok(mut guard) = smtc_paused_sources().lock() {
+        guard.clear();
+    }
+}
+
 /// Initialise file + terminal logging.
-/// Log file goes to: <AppData>\Break Reminder Pro\app.log
-/// Falls back to a temp-dir log if the app data dir is unavailable.
+///
+/// Log files go to: <AppData>\Break Reminder Pro\
+///   app.log      — current session
+///   app.log.bak  — previous session (one rotation kept for crash diagnosis)
+///
+/// On every startup the current log is rotated to .bak so each session starts
+/// fresh. This keeps the total log footprint to at most two small files.
 fn init_logging() {
-    // Determine log file path
-    let log_path = {
-        let appdata = std::env::var("APPDATA").unwrap_or_else(|_| std::env::temp_dir().to_string_lossy().into_owned());
+    // Determine log directory and file paths
+    let (log_path, bak_path) = {
+        let appdata = std::env::var("APPDATA")
+            .unwrap_or_else(|_| std::env::temp_dir().to_string_lossy().into_owned());
         let dir = std::path::PathBuf::from(appdata).join("Break Reminder Pro");
         let _ = fs::create_dir_all(&dir);
-        dir.join("app.log")
+        (dir.join("app.log"), dir.join("app.log.bak"))
     };
 
-    // Open (or create) the log file in append mode
+    // Rotate: move current log → .bak (overwrites previous .bak)
+    // This bounds total log storage to two session files.
+    if log_path.exists() {
+        let _ = fs::rename(&log_path, &bak_path);
+    }
+
+    // Open (or create) the log file — always starts empty after rotation
     let log_file = OpenOptions::new()
         .create(true)
-        .append(true)
+        .write(true)
+        .truncate(true)
         .open(&log_path)
         .expect("Failed to open log file");
 
+    // Terminal: Debug in dev builds, Info in release
+    // File: Info in release (avoids flooding the log with debug noise),
+    //       Debug in dev (full visibility during development)
     let log_level = if cfg!(debug_assertions) {
         LevelFilter::Debug
     } else {
@@ -42,13 +94,11 @@ fn init_logging() {
     };
 
     CombinedLogger::init(vec![
-        // Terminal logger — visible in dev, no-op in release (no console)
         TermLogger::new(log_level, Config::default(), TerminalMode::Mixed, ColorChoice::Auto),
-        // File logger — always active, captures release crashes
-        WriteLogger::new(LevelFilter::Debug, Config::default(), log_file),
+        WriteLogger::new(log_level, Config::default(), log_file),
     ])
     .unwrap_or_else(|_| {
-        // If logging init fails (e.g. already initialised), silently continue
+        // Already initialised (e.g. in tests) — silently continue
     });
 
     info!(
@@ -239,12 +289,6 @@ fn show_update_notification(
     WindowManager::create_window(app_handle, config)
 }
 
-// Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
-
-#[tauri::command]
-fn greet(name: &str) -> String {
-    format!("Hello, {}! You've been greeted from Rust!", name)
-}
 
 #[tauri::command]
 fn lock_screen() -> Result<(), String> {
@@ -263,7 +307,78 @@ fn lock_screen() -> Result<(), String> {
     }
 }
 
-/// Returns true if the Windows session is currently locked (lock screen is active).
+/// Check if VLC is currently playing by inspecting its Windows Core Audio session state.
+/// A playing VLC has an Active audio session; a paused VLC has an Inactive one.
+/// Returns false if VLC is not running or has no audio session.
+#[cfg(target_os = "windows")]
+fn is_vlc_playing_via_audio(vlc_pid: u32) -> bool {
+    use windows::Win32::Media::Audio::{
+        eMultimedia, eRender, IMMDeviceEnumerator, MMDeviceEnumerator,
+        IAudioSessionControl2, IAudioSessionManager2,
+        AudioSessionStateActive,
+    };
+    use windows::Win32::System::Com::{CoCreateInstance, CoInitializeEx, CLSCTX_ALL, COINIT_MULTITHREADED};
+    use windows::core::ComInterface;
+
+    unsafe {
+        let _ = CoInitializeEx(None, COINIT_MULTITHREADED);
+
+        let enumerator: IMMDeviceEnumerator =
+            match CoCreateInstance(&MMDeviceEnumerator, None, CLSCTX_ALL) {
+                Ok(e) => e,
+                Err(e) => { println!("⚠️ CoCreateInstance failed: {:?}", e); return false; }
+            };
+
+        let device = match enumerator.GetDefaultAudioEndpoint(eRender, eMultimedia) {
+            Ok(d) => d,
+            Err(e) => { println!("⚠️ GetDefaultAudioEndpoint failed: {:?}", e); return false; }
+        };
+
+        // IMMDevice::Activate is generic in windows 0.52 — type inferred from return type
+        let session_manager: IAudioSessionManager2 =
+            match device.Activate(CLSCTX_ALL, None) {
+                Ok(m) => m,
+                Err(e) => { println!("⚠️ Activate IAudioSessionManager2 failed: {:?}", e); return false; }
+            };
+
+        let session_enum = match session_manager.GetSessionEnumerator() {
+            Ok(e) => e,
+            Err(e) => { println!("⚠️ GetSessionEnumerator failed: {:?}", e); return false; }
+        };
+
+        let count = match session_enum.GetCount() {
+            Ok(c) => c,
+            Err(_) => return false,
+        };
+
+        for i in 0..count {
+            let session = match session_enum.GetSession(i) {
+                Ok(s) => s,
+                Err(_) => continue,
+            };
+            let session2: IAudioSessionControl2 = match session.cast() {
+                Ok(s) => s,
+                Err(_) => continue,
+            };
+            let pid = match session2.GetProcessId() {
+                Ok(p) => p,
+                Err(_) => continue,
+            };
+            if pid == vlc_pid {
+                let state = match session2.GetState() {
+                    Ok(s) => s,
+                    Err(_) => continue,
+                };
+                let is_active = state == AudioSessionStateActive;
+                println!("  VLC audio session state: {:?} → playing={}", state, is_active);
+                return is_active;
+            }
+        }
+        println!("  No audio session found for VLC PID {} (no audio or muted)", vlc_pid);
+        false
+    }
+}
+
 /// Detects the lock screen by checking if LogonUI.exe is running — Windows always
 /// launches this process when the workstation is locked, regardless of desktop access.
 #[tauri::command]
@@ -291,80 +406,191 @@ async fn control_media(action: String) -> Result<(), String> {
     println!("🎵 Media control requested: {}", action);
 
     #[cfg(target_os = "windows")]
-    if action == "pause" {
-        use windows::Media::Control::GlobalSystemMediaTransportControlsSessionManager;
+    {
+        // ── VLC: state-aware WM_APPCOMMAND ──────────────────────────────────────
+        // VLC never registers with SMTC. We check its actual playing state first
+        // so we only toggle it when needed (pause only if playing, play only if paused).
+        {
+            use winapi::um::winuser::{
+                EnumWindows, GetWindowThreadProcessId, IsWindowVisible,
+                SendMessageTimeoutW,
+                WM_APPCOMMAND, SMTO_ABORTIFHUNG,
+            };
+            use winapi::shared::minwindef::{BOOL, LPARAM, TRUE};
+            use winapi::shared::windef::HWND;
+            use sysinfo::System;
 
-        println!("Attempting to pause using Windows SMTC...");
-        // Run SMTC logic
-        let smtc_result = async {
-            let manager = GlobalSystemMediaTransportControlsSessionManager::RequestAsync()?.await?;
-            let session = manager.GetCurrentSession()?;
-            session.TryPauseAsync()?.await?;
-            Ok::<(), windows::core::Error>(())
-        }
-        .await;
+            let sys = System::new_all();
+            let vlc_pid: Option<u32> = sys.processes().values()
+                .find(|p| p.name().to_lowercase() == "vlc.exe")
+                .map(|p| p.pid().as_u32());
 
-        match smtc_result {
-            Ok(_) => {
-                println!("✅ Paused media using Windows SMTC");
-                return Ok(());
-            }
-            Err(e) => {
-                println!("⚠️ SMTC failed (no active session or other error): {:?}", e);
-                println!("Falling back to keyboard simulation...");
+            if let Some(pid) = vlc_pid {
+                struct SearchData { pid: u32, hwnd: HWND }
+                let mut data = SearchData { pid, hwnd: std::ptr::null_mut() };
+
+                unsafe extern "system" fn find_vlc_visible_window(hwnd: HWND, lparam: LPARAM) -> BOOL {
+                    let data = &mut *(lparam as *mut SearchData);
+                    let mut wpid: u32 = 0;
+                    GetWindowThreadProcessId(hwnd, &mut wpid);
+                    if wpid == data.pid && IsWindowVisible(hwnd) != 0 {
+                        data.hwnd = hwnd;
+                        return 0;
+                    }
+                    TRUE
+                }
+                unsafe { EnumWindows(Some(find_vlc_visible_window), &mut data as *mut SearchData as LPARAM); }
+
+                if !data.hwnd.is_null() {
+                    // Use explicit PAUSE/PLAY commands — but only act if VLC is in
+                    // the expected state, detected via its Core Audio session.
+                    // Active audio session = playing; Inactive = paused.
+                    use winapi::um::winuser::{
+                        APPCOMMAND_MEDIA_PAUSE, APPCOMMAND_MEDIA_PLAY,
+                        APPCOMMAND_MEDIA_PLAY_PAUSE,
+                    };
+
+                    let should_send = match action.as_str() {
+                        "pause" => {
+                            let playing = is_vlc_playing_via_audio(pid);
+                            VLC_WAS_PLAYING.store(playing, Ordering::SeqCst);
+                            println!("  VLC audio state → playing={}, will_pause={}", playing, playing);
+                            playing
+                        }
+                        "play" => {
+                            let was = VLC_WAS_PLAYING.load(Ordering::SeqCst);
+                            println!("  VLC was_playing={}, will_resume={}", was, was);
+                            was
+                        }
+                        _ => true,
+                    };
+
+                    if should_send {
+                        let appcommand: i16 = match action.as_str() {
+                            "pause" => APPCOMMAND_MEDIA_PAUSE,
+                            "play"  => APPCOMMAND_MEDIA_PLAY,
+                            _       => APPCOMMAND_MEDIA_PLAY_PAUSE,
+                        };
+                        let lparam_val = ((appcommand as isize) << 16) as isize;
+                        let mut result: usize = 0;
+                        let ret = unsafe {
+                            SendMessageTimeoutW(
+                                data.hwnd, WM_APPCOMMAND, data.hwnd as usize,
+                                lparam_val, SMTO_ABORTIFHUNG, 1000, &mut result,
+                            )
+                        };
+                        println!("✅ WM_APPCOMMAND {} sent to VLC (ret={} result={})", action, ret, result);
+                    } else {
+                        println!("⏭️ Skipping VLC WM_APPCOMMAND for action '{}' (wrong state)", action);
+                    }
+                } else {
+                    println!("⚠️ VLC running but no visible window found");
+                }
+            } else {
+                println!("ℹ️ VLC not running");
             }
         }
+
+        // ── SMTC: track which sessions we pause, only resume those ──────────────
+        // On pause: record which sources were Playing → pause them → store their IDs.
+        // On play:  only resume the sources we recorded, not all paused sessions.
+        let smtc_action = action.clone();
+        let smtc_thread = std::thread::spawn(move || {
+            use windows::Media::Control::{
+                GlobalSystemMediaTransportControlsSessionManager,
+                GlobalSystemMediaTransportControlsSessionPlaybackStatus,
+            };
+
+            let manager = match GlobalSystemMediaTransportControlsSessionManager::RequestAsync()
+                .and_then(|op| op.get())
+            {
+                Ok(m) => m,
+                Err(e) => { println!("⚠️ SMTC manager failed: {:?}", e); return; }
+            };
+
+            let sessions_view = match manager.GetSessions() {
+                Ok(s) => s,
+                Err(e) => { println!("⚠️ GetSessions failed: {:?}", e); return; }
+            };
+            let count = sessions_view.Size().unwrap_or(0);
+            println!("🎵 SMTC sessions: {}", count);
+
+            match smtc_action.as_str() {
+                "pause" => {
+                    // Pause only currently-playing sessions and record their IDs
+                    let mut paused_sources: Vec<String> = Vec::new();
+                    for i in 0..count {
+                        let session = match sessions_view.GetAt(i) { Ok(s) => s, Err(_) => continue };
+                        let source = session.SourceAppUserModelId()
+                            .map(|s| s.to_string())
+                            .unwrap_or_else(|_| format!("session_{}", i));
+                        let is_playing = session.GetPlaybackInfo()
+                            .and_then(|info| info.PlaybackStatus())
+                            .map(|st| st == GlobalSystemMediaTransportControlsSessionPlaybackStatus::Playing)
+                            .unwrap_or(false);
+
+                        if is_playing {
+                            println!("  ⏸ Pausing SMTC: {}", source);
+                            let _ = session.TryPauseAsync().and_then(|op| op.get());
+                            paused_sources.push(source);
+                        } else {
+                            println!("  ⏭️ Skipped (not playing): {}", source);
+                        }
+                    }
+                    // Store the list of sources we paused
+                    if let Ok(mut guard) = smtc_paused_sources().lock() {
+                        *guard = paused_sources.clone();
+                        println!("💾 Stored {} paused SMTC sources: {:?}", paused_sources.len(), paused_sources);
+                    }
+                }
+                "play" => {
+                    // Resume only the sessions we previously paused
+                    let paused_sources = if let Ok(guard) = smtc_paused_sources().lock() {
+                        guard.clone()
+                    } else {
+                        Vec::new()
+                    };
+                    println!("  Resuming {} recorded SMTC sources: {:?}", paused_sources.len(), paused_sources);
+
+                    for i in 0..count {
+                        let session = match sessions_view.GetAt(i) { Ok(s) => s, Err(_) => continue };
+                        let source = session.SourceAppUserModelId()
+                            .map(|s| s.to_string())
+                            .unwrap_or_else(|_| format!("session_{}", i));
+
+                        if paused_sources.contains(&source) {
+                            println!("  ▶ Resuming SMTC: {}", source);
+                            let _ = session.TryPlayAsync().and_then(|op| op.get());
+                        } else {
+                            println!("  ⏭️ Not our session, skipping: {}", source);
+                        }
+                    }
+                }
+                _ => {
+                    // playpause toggle: act on all playing sessions
+                    for i in 0..count {
+                        let session = match sessions_view.GetAt(i) { Ok(s) => s, Err(_) => continue };
+                        let _ = session.TryTogglePlayPauseAsync().and_then(|op| op.get());
+                    }
+                }
+            }
+        });
+
+        let _ = smtc_thread.join();
+        return Ok(());
     }
 
-    #[cfg(target_os = "windows")]
-    if action == "play" {
-        use windows::Media::Control::GlobalSystemMediaTransportControlsSessionManager;
-
-        println!("Attempting to play using Windows SMTC...");
-        let smtc_result = async {
-            let manager = GlobalSystemMediaTransportControlsSessionManager::RequestAsync()?.await?;
-            let session = manager.GetCurrentSession()?;
-            session.TryPlayAsync()?.await?;
-            Ok::<(), windows::core::Error>(())
-        }
-        .await;
-
-        match smtc_result {
-            Ok(_) => {
-                println!("✅ Resumed media using Windows SMTC");
-                return Ok(());
-            }
-            Err(e) => {
-                println!("⚠️ SMTC failed (no active session or other error): {:?}", e);
-                println!("Falling back to keyboard simulation...");
-            }
-        }
-    }
-
-    use enigo::{Enigo, Key, KeyboardControllable};
-    let mut enigo = Enigo::new();
-
-    match action.as_str() {
-        "pause" => {
-            println!("🛑 Sending MediaStop key (safer than toggle)");
-            enigo.key_click(Key::MediaStop);
-            Ok(())
-        }
-        "play" => {
-            println!("▶️ Sending MediaPlayPause key to resume");
-            enigo.key_click(Key::MediaPlayPause);
-            Ok(())
-        }
-        "playpause" => {
-            println!("⏯️ Sending MediaPlayPause key (toggle)");
-            enigo.key_click(Key::MediaPlayPause);
-            Ok(())
-        }
-        _ => Err("Unsupported media action".to_string()),
+    // Non-Windows fallback
+    #[cfg(not(target_os = "windows"))]
+    {
+        use enigo::{Enigo, Key, KeyboardControllable};
+        let mut enigo = Enigo::new();
+        enigo.key_click(Key::MediaPlayPause);
+        Ok(())
     }
 }
 
-/// Returns true if media is currently playing according to Windows SMTC.
+/// Returns true if ANY SMTC session is currently Playing.
 /// Falls back to false (assume not playing) if SMTC is unavailable.
 #[tauri::command]
 async fn is_media_playing() -> bool {
@@ -378,12 +604,25 @@ async fn is_media_playing() -> bool {
         let result = async {
             let manager =
                 GlobalSystemMediaTransportControlsSessionManager::RequestAsync()?.await?;
-            let session = manager.GetCurrentSession()?;
-            let playback_info = session.GetPlaybackInfo()?;
-            let status = playback_info.PlaybackStatus()?;
-            Ok::<bool, windows::core::Error>(
-                status == GlobalSystemMediaTransportControlsSessionPlaybackStatus::Playing,
-            )
+            let sessions = manager.GetSessions()?;
+            let count = sessions.Size().unwrap_or(0);
+            for i in 0..count {
+                let session = match sessions.GetAt(i) {
+                    Ok(s) => s,
+                    Err(_) => continue,
+                };
+                let is_playing = session
+                    .GetPlaybackInfo()
+                    .and_then(|info| info.PlaybackStatus())
+                    .map(|st| {
+                        st == GlobalSystemMediaTransportControlsSessionPlaybackStatus::Playing
+                    })
+                    .unwrap_or(false);
+                if is_playing {
+                    return Ok::<bool, windows::core::Error>(true);
+                }
+            }
+            Ok::<bool, windows::core::Error>(false)
         }
         .await;
 
@@ -394,7 +633,6 @@ async fn is_media_playing() -> bool {
             }
             Err(e) => {
                 println!("⚠️ Could not read SMTC playback state: {:?}", e);
-                // No active SMTC session means nothing is playing
                 return false;
             }
         }
@@ -895,14 +1133,14 @@ pub fn run() {
     info!("Initialising Tauri application...");
 
     info!("Step 1: Building Tauri app...");
-    let result = tauri::Builder::default()
+    tauri::Builder::default()
         .plugin({
             info!("Step 2: Loading opener plugin...");
             tauri_plugin_opener::init()
         })
         .plugin({
             info!("Step 3: Loading autostart plugin...");
-            tauri_plugin_autostart::init(MacosLauncher::LaunchAgent, None)
+            tauri_plugin_autostart::init(tauri_plugin_autostart::MacosLauncher::LaunchAgent, None)
         })
         .setup(|app| {
             info!("Step 4: Setup callback started");
@@ -936,7 +1174,6 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
-            greet,
             lock_screen,
             is_screen_locked,
             control_media,
@@ -964,14 +1201,11 @@ pub fn run() {
             show_index_window,
             get_app_version,
             open_url,
-            show_update_notification
+            show_update_notification,
+            set_media_was_playing,
+            get_media_was_playing,
+            clear_media_was_playing
         ])
-        .run(tauri::generate_context!());
-
-    if let Err(e) = result {
-        error!("💥 Tauri application error: {}", e);
-        // Give the logger time to flush before the process exits
-        std::thread::sleep(std::time::Duration::from_millis(500));
-        std::process::exit(1);
-    }
+        .run(tauri::generate_context!())
+        .expect("error while running tauri application");
 }

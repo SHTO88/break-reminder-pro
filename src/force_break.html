@@ -500,17 +500,10 @@
         }
       }
 
-      // Close the window — media resume happens after, user sees desktop immediately
+      // Resume media BEFORE closing the window — after closeWindow() the webview
+      // is destroyed and any invoke() calls made after it silently fail.
       try {
-        await WindowUtils.closeWindow('force_break');
-      } catch (error) {
-        console.error('Error closing window:', error);
-        window.close();
-      }
-
-      // Resume media after the window is gone
-      try {
-        const mediaWasPlaying = localStorage.getItem('mediaWasPlaying') === 'true';
+        const mediaWasPlaying = await invoke('get_media_was_playing');
         if (settings && settings.auto_pause && mediaWasPlaying && !screenLocked && !skipMediaResume) {
           console.log('🎵 Resuming media playback...');
           await invoke('control_media', { action: 'play' });
@@ -519,9 +512,17 @@
           else if (screenLocked) console.log('🔒 Skipping media resume (screen is locked)');
           else console.log('🎵 Skipping media resume (was not playing before break)');
         }
-        localStorage.removeItem('mediaWasPlaying');
+        await invoke('clear_media_was_playing');
       } catch (error) {
         console.error('Error resuming media:', error);
+      }
+
+      // Close the window last
+      try {
+        await WindowUtils.closeWindow('force_break');
+      } catch (error) {
+        console.error('Error closing window:', error);
+        window.close();
       }
     }
 
@@ -670,7 +671,7 @@
       // Hide skip-media button if auto_pause is not enabled or no media was playing
       try {
         const settings = await invoke('load_settings');
-        const mediaWasPlaying = localStorage.getItem('mediaWasPlaying') === 'true';
+        const mediaWasPlaying = await invoke('get_media_was_playing');
         if (!settings || !settings.auto_pause || !mediaWasPlaying) {
           skipMediaBtn.style.display = 'none';
         }

@@ -5,6 +5,21 @@ All notable changes to Break Reminder Pro will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.1] - 2026-06-10
+
+### Fixed
+
+- **VLC media player** is now correctly paused and resumed during breaks. VLC does not register with the Windows SMTC (System Media Transport Controls) API, so previous versions had no effect on it. The app now targets VLC directly via `WM_APPCOMMAND` sent to its visible window, found by process name rather than window class (which varies across VLC versions).
+- VLC that was already paused before a break no longer starts playing when the break ends. State is now detected via the Windows Core Audio session API (`IAudioSessionManager2`) — an active audio session means VLC is playing; inactive means paused — so the app only sends commands when needed.
+- Media state is now stored in the Rust process (via an `AtomicBool`) instead of `localStorage`. Break windows (`force_break`, `notify`) are separate Tauri webviews with isolated storage, so the previous `localStorage`-based approach meant the "was media playing" flag was never visible to them, causing resume to always be skipped.
+- SMTC-based players (Spotify, YouTube in browser, etc.) that were already paused before the break are no longer accidentally resumed when the break ends. The app now records which SMTC sources it paused and only resumes those.
+- Media resume no longer silently fails on force break. The resume `invoke` call was made after `closeWindow()`, which destroyed the webview context. Resume now happens before the window closes.
+
+### Changed
+
+- Log file rotation on startup: `app.log` is moved to `app.log.bak` each time the app launches, so each session starts with a clean file. Total log storage is capped at two files (current + previous session).
+- Release build log level corrected to `Info` for the file logger (was incorrectly set to `Debug` in all builds, producing verbose output in production).
+
 ## [1.1.0] - 2026-06-09
 
 ### Fixed

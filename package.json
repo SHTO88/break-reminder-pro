@@ -1,7 +1,7 @@
 {
   "name": "break-reminder-pro",
   "private": false,
-  "version": "1.0.0",
+  "version": "1.1.1",
   "description": "Privacy-respecting, open source break reminder for Windows. Helps maintain health and productivity with customizable break intervals, smart meeting detection, and system tray integration. No ads, no tracking, no data collection.",
   "author": "Break Reminder Pro Contributors",
   "license": "MIT",
