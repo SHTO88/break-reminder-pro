@@ -891,13 +891,19 @@ pub fn run() {
 
     info!("Initialising Tauri application...");
 
-    tauri::Builder::default()
-        .plugin(tauri_plugin_opener::init())
-        .plugin(tauri_plugin_autostart::init(
-            MacosLauncher::LaunchAgent,
-            None,
-        ))
+    info!("Step 1: Building Tauri app...");
+    let result = tauri::Builder::default()
+        .plugin({
+            info!("Step 2: Loading opener plugin...");
+            tauri_plugin_opener::init()
+        })
+        .plugin({
+            info!("Step 3: Loading autostart plugin...");
+            tauri_plugin_autostart::init(MacosLauncher::LaunchAgent, None)
+        })
         .setup(|app| {
+            info!("Step 4: Setup callback started");
+
             // Setup system tray
             if let Err(e) = setup_system_tray(app.handle()) {
                 error!("❌ Failed to setup system tray: {}", e);
@@ -922,6 +928,7 @@ pub fn run() {
                 error!("❌ Main window not found during setup!");
             }
 
+            info!("Step 4: Setup callback complete");
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -955,6 +962,12 @@ pub fn run() {
             open_url,
             show_update_notification
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .run(tauri::generate_context!());
+
+    if let Err(e) = result {
+        error!("💥 Tauri application error: {}", e);
+        // Give the logger time to flush before the process exits
+        std::thread::sleep(std::time::Duration::from_millis(500));
+        std::process::exit(1);
+    }
 }

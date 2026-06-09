@@ -5,6 +5,13 @@ All notable changes to Break Reminder Pro will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.0] - 2026-06-09
+
+### Fixed
+
+- Release builds from GitHub Actions were crashing on launch due to stale Rust cache and `sed`-based JSON patching corrupting config files. CI now uses Python for safe JSON patching and strips BOM before building.
+- Tauri startup errors are now logged to `app.log` instead of silently killing the process.
+
 ## [1.0.9] - 2026-06-09
 
 ### Fixed
