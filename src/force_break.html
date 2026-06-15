@@ -403,6 +403,7 @@
     let earlyReturnVisible = false;
     let currentAnswer = 0;
     let skipMediaResume = false; // one-time flag, resets each break
+    let breakEndCalled = false;  // re-entrancy guard — endBreak() must only run once
 
     // DOM elements
     const countdownDisplay = document.getElementById('countdown-display');
@@ -459,10 +460,16 @@
     function toggleEarlyReturn() {
       earlyReturnVisible = !earlyReturnVisible;
       unlockContainer.style.display = earlyReturnVisible ? 'flex' : 'none';
-      console.log('Early return button:', earlyReturnVisible ? 'visible' : 'hidden');
     }
 
     async function endBreak(isEarlyReturn = false) {
+      // Guard against double-invocation (e.g. timer reaching 0 while early-return is in flight)
+      if (breakEndCalled) {
+        console.log('⚠️ endBreak() called again — ignoring duplicate invocation');
+        return;
+      }
+      breakEndCalled = true;
+
       if (timerInterval) {
         clearInterval(timerInterval);
       }
@@ -481,41 +488,52 @@
       let settings = null;
       let screenLocked = false;
       try {
-        const { invoke: invokeSettings } = window.__TAURI__.core;
         [settings, screenLocked] = await Promise.all([
-          invokeSettings('load_settings'),
+          invoke('load_settings'),
           invoke('is_screen_locked'),
         ]);
+        console.log('📋 Settings loaded:', JSON.stringify({ auto_pause: settings?.auto_pause, break_chime: settings?.break_chime }));
+        console.log('🔒 Screen locked:', screenLocked);
       } catch (e) {
         console.error('Error fetching pre-close state:', e);
       }
 
-      // Play chime before closing so the window context is still alive
+      // Fire chime and media resume in parallel, then close immediately.
+      const mediaWasPlaying = await invoke('get_media_was_playing').catch(() => false);
+      const shouldResumeMedia = settings && settings.auto_pause && mediaWasPlaying && !screenLocked && !skipMediaResume;
+
+      console.log('🎵 Media resume decision:', {
+        mediaWasPlaying,
+        auto_pause: settings?.auto_pause,
+        screenLocked,
+        skipMediaResume,
+        shouldResumeMedia,
+      });
+
+      const pendingOps = [];
+
       if (settings && settings.break_chime) {
-        try {
-          await invoke('play_chime');
-          console.log('🔔 Break end chime played');
-        } catch (e) {
-          console.warn('⚠️ Could not play chime:', e);
-        }
+        pendingOps.push(
+          invoke('play_chime').catch(e => console.warn('⚠️ Could not play chime:', e))
+        );
       }
 
-      // Resume media BEFORE closing the window — after closeWindow() the webview
-      // is destroyed and any invoke() calls made after it silently fail.
-      try {
-        const mediaWasPlaying = await invoke('get_media_was_playing');
-        if (settings && settings.auto_pause && mediaWasPlaying && !screenLocked && !skipMediaResume) {
-          console.log('🎵 Resuming media playback...');
-          await invoke('control_media', { action: 'play' });
-        } else {
-          if (skipMediaResume) console.log('⏸ Skipping media resume (user chose to keep paused)');
-          else if (screenLocked) console.log('🔒 Skipping media resume (screen is locked)');
-          else console.log('🎵 Skipping media resume (was not playing before break)');
-        }
-        await invoke('clear_media_was_playing');
-      } catch (error) {
-        console.error('Error resuming media:', error);
+      if (shouldResumeMedia) {
+        console.log('🎵 Resuming media playback...');
+        pendingOps.push(
+          invoke('control_media', { action: 'play' }).catch(e => console.error('Error resuming media:', e))
+        );
+      } else {
+        if (skipMediaResume) console.log('⏸ Skipping media resume (user chose to keep paused)');
+        else if (screenLocked) console.log('🔒 Skipping media resume (screen is locked)');
+        else console.log('🎵 Skipping media resume (was not playing before break)');
       }
+
+      // Wait for chime + media ops to finish, then clear the flag.
+      // clear_media_was_playing also wipes smtc_paused_sources, so it MUST run
+      // after control_media('play') has finished reading that list.
+      await Promise.allSettled(pendingOps);
+      await invoke('clear_media_was_playing').catch(() => {});
 
       // Close the window last
       try {
@@ -582,10 +600,6 @@
       }
     }
 
-    function getBreakDuration() {
-      return TimerUtils.getBreakDuration(300);
-    }
-
     // Event listeners
     unlockBtn.addEventListener('click', showMathModal);
     mathSubmit.addEventListener('click', checkAnswer);
@@ -615,12 +629,9 @@
       }
 
       if (e.key === 's' || e.key === 'S') {
-        // Only toggle if media was playing
+        // Only act when the skip-media button is actually visible
         if (skipMediaBtn.style.display !== 'none') {
-          // Show the container if not already visible
-          if (!earlyReturnVisible) {
-            toggleEarlyReturn();
-          }
+          if (!earlyReturnVisible) toggleEarlyReturn();
           skipMediaBtn.click();
         }
         e.preventDefault();
@@ -640,18 +651,10 @@
     document.addEventListener('contextmenu', (e) => e.preventDefault());
     document.addEventListener('selectstart', (e) => e.preventDefault());
 
-    // Handle window close events
-    window.addEventListener('beforeunload', async (e) => {
-      // If timer is still running, this is an early return
-      if (currentSeconds > 0) {
-        console.log('🏃 Window closing early with', currentSeconds, 'seconds remaining');
-        try {
-          await invoke('break_ended_early');
-        } catch (error) {
-          console.error('Error notifying early return:', error);
-        }
-      }
-    });
+    // NOTE: No beforeunload handler needed here.
+    // endBreak(true) already calls invoke('break_ended_early') before closing the window,
+    // so a beforeunload fallback would send a second redundant IPC call into a webview
+    // that is mid-teardown, causing a race condition and intermittent crashes on Windows.
 
     // Initialize
     async function init() {
@@ -659,7 +662,7 @@
       console.log('Current URL:', window.location.href);
       console.log('URL search:', window.location.search);
 
-      totalSeconds = getBreakDuration();
+      totalSeconds = TimerUtils.getBreakDuration(300);
       currentSeconds = totalSeconds;
 
       console.log('Final break duration:', totalSeconds, 'seconds');

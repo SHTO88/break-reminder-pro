@@ -44,7 +44,13 @@ function applySettingsToUI(settings) {
     };
 
     UIUtils.applySettingsToForm(settings, fieldMappings);
-    
+
+    // Apply the 30s default only when pre_break_seconds was never saved (undefined).
+    // Do NOT override a deliberate 0:00 setting the user may have chosen.
+    if (settings.pre_break_seconds === undefined && settings.pre_break_minutes === undefined) {
+      document.getElementById('pre-break-seconds').value = 30;
+    }
+
     // Apply update check setting
     const updateCheckEnabled = updateManager.isUpdateCheckEnabled();
     document.getElementById('auto-update-check').checked = updateCheckEnabled;

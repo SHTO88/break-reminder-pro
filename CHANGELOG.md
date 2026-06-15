@@ -5,6 +5,39 @@ All notable changes to Break Reminder Pro will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.2] - 2026-06-15
+
+### Fixed
+
+- **App crash on break end (PC-specific)** — Three race conditions fixed: window label collision when reopening a break window, duplicate `break_ended_early` IPC calls from a leftover `beforeunload` handler, and concurrent `endBreak()` invocations. Re-entrancy guards added throughout.
+
+- **Break window frozen at 00:00** — `play_chime` was blocking the webview waiting for PowerShell to start and exit (1–3s). Chime now spawns detached. Chime and media resume run in parallel via `Promise.allSettled`.
+
+- **Media not resuming after break** — Several issues combined: `set_media_was_playing(true)` fired unconditionally even when nothing was playing; `clear_media_was_playing` raced against `control_media('play')` wiping the paused-sources list before resume could read it; a stale fire-and-forget clear call was left in `force_break.html`. All three fixed. SMTC pause now waits up to 5s to ensure sources are written before the break window opens.
+
+- **VLC not pausing** — `sysinfo` was occasionally missing the VLC process. Switched to `System::new()` + `refresh_processes()` and broadened the match from exact `"vlc.exe"` to `contains("vlc")`.
+
+- **Update notification** — Version and notes passed via URL query string were getting mangled by Tauri's URL routing (newlines, special chars). Data now injected via `window.eval()` as `window.__UPDATE_DATA__` using `serde_json` for safe escaping. Window redesigned: flat single-scroll layout, Markdown rendering, sticky action buttons, resizable at 500×480.
+
+- **`load_settings` crash for existing users** — `AppSettings` lacked `#[serde(default)]`, so any file missing a field (e.g. `auto_start_timer`) caused a hard deserialization error. All fields now have defaults.
+
+- **Pre-break timing inputs** — Added `min` / `sec` labels below the input boxes. 30-second default now only applied when the field is truly absent, not when user has set `0:00`.
+
+- **`WM_APPCOMMAND` lparam cast** — `APPCOMMAND_MEDIA_*` constants were cast to `i16` before the 16-bit shift, risking sign-truncation. Now `i32`.
+
+### Changed
+
+- All `println!` in Rust replaced with `info!`/`warn!` — media control, VLC detection, and SMTC output now appear in `app.log` and are level-gated in production.
+- `window_manager` cleaned up: removed `document.title = '… - POSITIONED BY RUST'` mutation, redundant `set_always_on_top()` post-build call, and verbose positioning log injections.
+- `handleBreakTime` reloads settings after saving instead of reusing the stale `currentTimerSettings` cache.
+- `renderMarkdown` no longer processes `_..._` as italic, which was mangling snake_case identifiers like `auto_pause`.
+- Pre-break 30s default only applied when field is absent from saved data, not on deliberate `0:00`.
+
+### Removed
+
+- Full process-list dump logged on every media control call.
+- Dead code: `getBreakDuration()` wrapper, `invokeSettings` alias, `DEBUG:` console logs.
+
 ## [1.1.1] - 2026-06-10
 
 ### Fixed

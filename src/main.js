@@ -15,6 +15,7 @@ let pausedTime = 0;
 let preBreakTriggered = false;
 let currentTimerSettings = null; // Cache settings for current timer session
 let recurringTimeout = null; // Track recurring timer timeout
+let breakEndHandled = false; // Re-entrancy guard for handleBreakSkipped / handleEarlyBreakReturn
 
 // Settings management
 async function saveSettings() {
@@ -61,6 +62,9 @@ function applySettingsToUI(settings) {
 async function startTimer(seconds) {
   console.log(`🚀 Starting timer with ${seconds} seconds (${Math.floor(seconds/60)}:${seconds%60})`);
   
+  // Reset break-end guard so the next break cycle can fire handleEarlyBreakReturn/handleBreakSkipped
+  breakEndHandled = false;
+
   // Load settings once at the start of the timer
   currentTimerSettings = await loadSettings();
   console.log('⚙️ Settings loaded for timer session:', currentTimerSettings);
@@ -360,33 +364,15 @@ async function checkPreBreakTrigger() {
 
 // Break handling
 async function handleBreakTime() {
-  console.log('🚨 BREAK TIME TRIGGERED! Starting break handling...');
   try {
     // Save current settings first to ensure we use the latest values
     await saveSettings();
-    
-    // Small delay to ensure settings are saved
     await new Promise(resolve => setTimeout(resolve, 100));
-    
-    // Use cached settings from timer session
-    const settings = currentTimerSettings || await loadSettings();
+
+    // Always reload after save so we have a fresh, consistent object
+    const settings = await loadSettings();
+    currentTimerSettings = settings; // keep cache in sync
     const breakMode = document.querySelector('input[name="break-mode"]:checked').value;
-
-    console.log('🔧 Break time! Using cached settings:', settings);
-    console.log('🔧 Pre-break enabled:', settings.pre_break);
-    console.log('🔧 Pre-break timing:', settings.pre_break_minutes, 'minutes', settings.pre_break_seconds, 'seconds');
-    console.log('🔧 Break mode:', breakMode);
-
-    // Double-check that settings match UI
-    const uiDurationMinutes = parseInt(document.getElementById("break-duration-minutes").value) || 0;
-    const uiDurationSeconds = parseInt(document.getElementById("break-duration-seconds").value) || 0;
-    console.log('UI values:', { minutes: uiDurationMinutes, seconds: uiDurationSeconds });
-    
-    if (settings.break_duration_minutes !== uiDurationMinutes || settings.break_duration_seconds !== uiDurationSeconds) {
-      console.warn('Settings mismatch! Saving again...');
-      await saveSettings();
-      await new Promise(resolve => setTimeout(resolve, 100));
-    }
 
     // Check if we're in a meeting and should skip break
     if (settings.meeting_detect) {
@@ -394,14 +380,11 @@ async function handleBreakTime() {
       if (inMeeting) {
         console.log("Meeting detected, postponing break...");
         document.getElementById('timer-status').textContent = 'Meeting detected - break postponed by 10 minutes';
-        
-        // Show meeting detected notification
         try {
           await invoke("meeting_detected_notification");
         } catch (error) {
           console.error("Failed to show meeting notification:", error);
         }
-        
         await startTimer(10 * 60);
         return;
       }
@@ -419,13 +402,26 @@ async function handleBreakTime() {
 async function triggerMainBreak(breakMode, settings) {
   try {
     if (settings.auto_pause) {
-      // Always call control_media — the Rust side handles both VLC (WM_APPCOMMAND)
-      // and SMTC players (Spotify, YouTube, etc.) independently.
-      // State is stored server-side via set_media_was_playing so all webview windows
-      // (force_break, notify) can read it — localStorage is per-webview and not shared.
-      console.log('🎵 auto_pause enabled — pausing media and recording state');
-      await invoke('set_media_was_playing', { wasPlaying: true });
-      await invoke('control_media', { action: 'pause' });
+      // Check whether media is actually playing before pausing.
+      // The flag is used by the break window to decide whether to resume on close,
+      // and control_media('pause') records which SMTC sources it paused so only
+      // those get resumed. Setting the flag unconditionally (even when nothing is
+      // playing) meant resume always tried to run but had an empty sources list.
+      console.log('🎵 auto_pause enabled — checking if media is playing...');
+      try {
+        const mediaPlaying = await invoke('is_media_playing');
+        console.log('🎵 Media currently playing:', mediaPlaying);
+        await invoke('set_media_was_playing', { wasPlaying: mediaPlaying });
+        if (mediaPlaying) {
+          await invoke('control_media', { action: 'pause' });
+          console.log('🎵 Media paused for break');
+        } else {
+          console.log('🎵 No media playing — skipping pause');
+        }
+      } catch (e) {
+        console.error('🎵 Error checking/pausing media:', e);
+        await invoke('set_media_was_playing', { wasPlaying: false });
+      }
     } else {
       // auto_pause is off — record that so break windows skip resume
       await invoke('set_media_was_playing', { wasPlaying: false });
@@ -480,6 +476,12 @@ async function triggerMainBreak(breakMode, settings) {
 
 // Handle break skip (when user clicks skip break button)
 function handleBreakSkipped() {
+  if (breakEndHandled) {
+    console.log('⚠️ handleBreakSkipped() called again — ignoring duplicate');
+    return;
+  }
+  breakEndHandled = true;
+
   console.log('⏭️ Break was skipped by user');
   
   // Clear any existing timers
@@ -494,8 +496,6 @@ function handleBreakSkipped() {
   
   // Store recurring setting before clearing timer state
   const wasRecurring = currentTimerSettings && currentTimerSettings.recurring;
-  console.log('DEBUG: currentTimerSettings:', currentTimerSettings);
-  console.log('DEBUG: wasRecurring:', wasRecurring);
   
   // If recurring is enabled, start the next timer immediately (keep UI on timer screen)
   if (wasRecurring) {
@@ -533,6 +533,12 @@ function handleBreakSkipped() {
 
 // Handle early return from break (when user closes break window early)
 function handleEarlyBreakReturn() {
+  if (breakEndHandled) {
+    console.log('⚠️ handleEarlyBreakReturn() called again — ignoring duplicate');
+    return;
+  }
+  breakEndHandled = true;
+
   console.log('🏃 User returned early from break');
   console.log('🔧 Current timer settings:', currentTimerSettings);
   console.log('🔧 Recurring enabled:', currentTimerSettings?.recurring);

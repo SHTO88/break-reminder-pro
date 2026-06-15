@@ -224,6 +224,8 @@
 
       console.log('🔥 Break notification window loaded successfully!');
       document.title = 'Break Time - Break Reminder Pro';
+
+      let windowClosed = false; // guard against double-invocation
       
       // Get break duration from URL parameters
       function getBreakDuration() {
@@ -267,6 +269,8 @@
       
       // Close window function
       async function closeWindow() {
+        if (windowClosed) return;
+        windowClosed = true;
         try {
           if (countdownInterval) {
             clearInterval(countdownInterval);
@@ -274,39 +278,50 @@
           
           const { invoke } = window.__TAURI__.core;
           
-          // Resume media only if it was playing before the break started
-          // and the screen is not currently locked
+          // Fetch all pre-close state in parallel to minimise round-trip time
+          let settings = null, mediaWasPlaying = false, screenLocked = false;
           try {
-            const settings = await invoke('load_settings');
-            const mediaWasPlaying = await invoke('get_media_was_playing');
-            const screenLocked = await invoke('is_screen_locked');
-
-            // Play chime if enabled
-            if (settings && settings.break_chime) {
-              try {
-                await invoke('play_chime');
-                console.log('🔔 Break end chime played');
-              } catch (e) {
-                console.warn('⚠️ Could not play chime:', e);
-              }
-            }
-
-            if (settings && settings.auto_pause && mediaWasPlaying && !screenLocked) {
-              console.log('🎵 Resuming media playback (was playing before break)...');
-              await invoke('control_media', { action: 'play' });
-              await invoke('clear_media_was_playing');
-            } else {
-              if (screenLocked) {
-                console.log('🔒 Skipping media resume (screen is locked)');
-              } else {
-                console.log('🎵 Skipping media resume (was not playing before break)');
-              }
-              await invoke('clear_media_was_playing');
-            }
+            [settings, mediaWasPlaying, screenLocked] = await Promise.all([
+              invoke('load_settings'),
+              invoke('get_media_was_playing'),
+              invoke('is_screen_locked'),
+            ]);
           } catch (error) {
-            console.error('Error resuming media:', error);
+            console.error('Error fetching pre-close state:', error);
           }
-          
+
+          const shouldResumeMedia = settings && settings.auto_pause && mediaWasPlaying && !screenLocked;
+
+          // Fire chime + media resume in parallel — neither blocks the other.
+          // play_chime is now a non-blocking detached process on the Rust side,
+          // and control_media has a 3-second hard timeout, so neither can stall the close.
+          const pendingOps = [];
+
+          if (settings && settings.break_chime) {
+            pendingOps.push(
+              invoke('play_chime').catch(e => console.warn('⚠️ Could not play chime:', e))
+            );
+          }
+
+          if (shouldResumeMedia) {
+            console.log('🎵 Resuming media playback (was playing before break)...');
+            pendingOps.push(
+              invoke('control_media', { action: 'play' }).catch(e => console.error('Error resuming media:', e))
+            );
+          } else {
+            if (screenLocked) {
+              console.log('🔒 Skipping media resume (screen is locked)');
+            } else {
+              console.log('🎵 Skipping media resume (was not playing before break)');
+            }
+          }
+
+          // Clear flag only after media has been resumed — control_media reads the
+          // smtc_paused_sources list that clear_media_was_playing also wipes, so
+          // clearing concurrently would race and leave nothing to resume.
+          await Promise.allSettled(pendingOps);
+          await invoke('clear_media_was_playing').catch(() => {});
+
           // Check if break ended early (before countdown finished)
           if (breakTimeRemaining > 0) {
             console.log('🏃 Break ended early with', breakTimeRemaining, 'seconds remaining');

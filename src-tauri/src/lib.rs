@@ -1,4 +1,4 @@
-use log::{error, info};
+use log::{error, info, warn};
 use serde::{Deserialize, Serialize};
 use simplelog::{
     ColorChoice, CombinedLogger, Config, LevelFilter, TermLogger, TerminalMode, WriteLogger,
@@ -110,6 +110,7 @@ fn init_logging() {
 
 
 #[derive(Serialize, Deserialize)]
+#[serde(default)]
 struct AppSettings {
     break_minutes: u32,
     break_seconds: u32,
@@ -127,10 +128,31 @@ struct AppSettings {
     auto_start_timer: bool,
 }
 
+impl Default for AppSettings {
+    fn default() -> Self {
+        Self {
+            break_minutes: 20,
+            break_seconds: 0,
+            break_duration_minutes: 0,
+            break_duration_seconds: 20,
+            break_mode: "force".to_string(),
+            auto_pause: false,
+            meeting_detect: false,
+            pre_break: false,
+            pre_break_minutes: 0,
+            pre_break_seconds: 30,
+            break_chime: false,
+            recurring: false,
+            autostart: false,
+            auto_start_timer: false,
+        }
+    }
+}
+
 #[tauri::command]
 fn force_break_window(app_handle: tauri::AppHandle, duration: Option<u32>) -> Result<(), String> {
     let break_duration = duration.unwrap_or(300);
-    println!(
+    info!(
         "💥 Creating force break window with duration: {} seconds",
         break_duration
     );
@@ -153,7 +175,7 @@ fn close_window(app_handle: tauri::AppHandle, label: String) -> Result<(), Strin
 #[tauri::command]
 fn notify_window(app_handle: tauri::AppHandle, duration: Option<u32>) -> Result<(), String> {
     let break_duration = duration.unwrap_or(600);
-    println!(
+    info!(
         "🔔 Creating notify window with duration: {} seconds",
         break_duration
     );
@@ -169,7 +191,7 @@ fn pre_break_notification_window(
     remaining_seconds: Option<u32>,
 ) -> Result<(), String> {
     let seconds = remaining_seconds.unwrap_or(30);
-    println!(
+    info!(
         "⏰ Creating pre-break window with {} seconds remaining...",
         seconds
     );
@@ -211,7 +233,7 @@ async fn hide_to_tray(app_handle: tauri::AppHandle) -> Result<(), String> {
         window
             .hide()
             .map_err(|e| format!("Failed to hide window: {}", e))?;
-        println!("🫥 Main window hidden to system tray");
+        info!("🫥 Main window hidden to system tray");
     }
     Ok(())
 }
@@ -225,14 +247,14 @@ async fn show_from_tray(app_handle: tauri::AppHandle) -> Result<(), String> {
         window
             .set_focus()
             .map_err(|e| format!("Failed to focus window: {}", e))?;
-        println!("👁️ Main window restored from system tray");
+        info!("👁️ Main window restored from system tray");
     }
     Ok(())
 }
 
 #[tauri::command]
 async fn quit_app(app_handle: tauri::AppHandle) -> Result<(), String> {
-    println!("🚪 Quitting application completely");
+    info!("🚪 Quitting application completely");
     app_handle.exit(0);
     Ok(())
 }
@@ -244,7 +266,7 @@ fn get_app_version() -> String {
 
 #[tauri::command]
 async fn open_url(url: String) -> Result<(), String> {
-    println!("🌐 Opening URL: {}", url);
+    info!("🌐 Opening URL: {}", url);
 
     #[cfg(target_os = "windows")]
     {
@@ -281,7 +303,7 @@ fn show_update_notification(
     download_url: String,
     published_at: String,
 ) -> Result<(), String> {
-    println!("🔔 Showing update notification for version: {}", version);
+    info!("🔔 Showing update notification for version: {}", version);
 
     WindowManager::close_existing_window(&app_handle, "update_notification");
     let config =
@@ -326,24 +348,24 @@ fn is_vlc_playing_via_audio(vlc_pid: u32) -> bool {
         let enumerator: IMMDeviceEnumerator =
             match CoCreateInstance(&MMDeviceEnumerator, None, CLSCTX_ALL) {
                 Ok(e) => e,
-                Err(e) => { println!("⚠️ CoCreateInstance failed: {:?}", e); return false; }
+                Err(e) => { info!("⚠️ CoCreateInstance failed: {:?}", e); return false; }
             };
 
         let device = match enumerator.GetDefaultAudioEndpoint(eRender, eMultimedia) {
             Ok(d) => d,
-            Err(e) => { println!("⚠️ GetDefaultAudioEndpoint failed: {:?}", e); return false; }
+            Err(e) => { info!("⚠️ GetDefaultAudioEndpoint failed: {:?}", e); return false; }
         };
 
         // IMMDevice::Activate is generic in windows 0.52 — type inferred from return type
         let session_manager: IAudioSessionManager2 =
             match device.Activate(CLSCTX_ALL, None) {
                 Ok(m) => m,
-                Err(e) => { println!("⚠️ Activate IAudioSessionManager2 failed: {:?}", e); return false; }
+                Err(e) => { info!("⚠️ Activate IAudioSessionManager2 failed: {:?}", e); return false; }
             };
 
         let session_enum = match session_manager.GetSessionEnumerator() {
             Ok(e) => e,
-            Err(e) => { println!("⚠️ GetSessionEnumerator failed: {:?}", e); return false; }
+            Err(e) => { info!("⚠️ GetSessionEnumerator failed: {:?}", e); return false; }
         };
 
         let count = match session_enum.GetCount() {
@@ -370,11 +392,11 @@ fn is_vlc_playing_via_audio(vlc_pid: u32) -> bool {
                     Err(_) => continue,
                 };
                 let is_active = state == AudioSessionStateActive;
-                println!("  VLC audio session state: {:?} → playing={}", state, is_active);
+                info!("  VLC audio session state: {:?} → playing={}", state, is_active);
                 return is_active;
             }
         }
-        println!("  No audio session found for VLC PID {} (no audio or muted)", vlc_pid);
+        info!("  No audio session for VLC pid={} (no audio or muted)", vlc_pid);
         false
     }
 }
@@ -391,9 +413,9 @@ fn is_screen_locked() -> bool {
             proc.name().to_lowercase() == "logonui.exe"
         });
         if locked {
-            println!("🔒 Screen is locked (LogonUI.exe detected)");
+            info!("🔒 Screen is locked (LogonUI.exe detected)");
         } else {
-            println!("🔓 Screen is not locked");
+            info!("🔓 Screen is not locked");
         }
         locked
     }
@@ -403,16 +425,15 @@ fn is_screen_locked() -> bool {
 
 #[tauri::command]
 async fn control_media(action: String) -> Result<(), String> {
-    println!("🎵 Media control requested: {}", action);
+    info!("🎵 Media control requested: {}", action);
 
     #[cfg(target_os = "windows")]
     {
         // ── VLC: state-aware WM_APPCOMMAND ──────────────────────────────────────
-        // VLC never registers with SMTC. We check its actual playing state first
-        // so we only toggle it when needed (pause only if playing, play only if paused).
+        // VLC never registers with SMTC. We find its window and send WM_APPCOMMAND.
         {
             use winapi::um::winuser::{
-                EnumWindows, GetWindowThreadProcessId, IsWindowVisible,
+                EnumWindows,
                 SendMessageTimeoutW,
                 WM_APPCOMMAND, SMTO_ABORTIFHUNG,
             };
@@ -420,26 +441,36 @@ async fn control_media(action: String) -> Result<(), String> {
             use winapi::shared::windef::HWND;
             use sysinfo::System;
 
-            let sys = System::new_all();
+            let mut sys = System::new();
+            sys.refresh_processes();
+
             let vlc_pid: Option<u32> = sys.processes().values()
-                .find(|p| p.name().to_lowercase() == "vlc.exe")
-                .map(|p| p.pid().as_u32());
+                .find(|p| p.name().to_string().to_lowercase().contains("vlc"))
+                .map(|p| { 
+                    info!("  VLC process found: '{}' pid={}", p.name(), p.pid().as_u32());
+                    p.pid().as_u32() 
+                });
 
             if let Some(pid) = vlc_pid {
                 struct SearchData { pid: u32, hwnd: HWND }
                 let mut data = SearchData { pid, hwnd: std::ptr::null_mut() };
 
                 unsafe extern "system" fn find_vlc_visible_window(hwnd: HWND, lparam: LPARAM) -> BOOL {
+                    use winapi::um::winuser::{GetWindowTextLengthW, IsWindowVisible, GetWindowThreadProcessId};
                     let data = &mut *(lparam as *mut SearchData);
                     let mut wpid: u32 = 0;
                     GetWindowThreadProcessId(hwnd, &mut wpid);
-                    if wpid == data.pid && IsWindowVisible(hwnd) != 0 {
+                    if wpid != data.pid || IsWindowVisible(hwnd) == 0 {
+                        return TRUE;
+                    }
+                    // Prefer windows that have a title (the main VLC window)
+                    if GetWindowTextLengthW(hwnd) > 0 && data.hwnd.is_null() {
                         data.hwnd = hwnd;
-                        return 0;
                     }
                     TRUE
                 }
                 unsafe { EnumWindows(Some(find_vlc_visible_window), &mut data as *mut SearchData as LPARAM); }
+                info!("  VLC window search result: hwnd={:?}", data.hwnd);
 
                 if !data.hwnd.is_null() {
                     // Use explicit PAUSE/PLAY commands — but only act if VLC is in
@@ -454,24 +485,24 @@ async fn control_media(action: String) -> Result<(), String> {
                         "pause" => {
                             let playing = is_vlc_playing_via_audio(pid);
                             VLC_WAS_PLAYING.store(playing, Ordering::SeqCst);
-                            println!("  VLC audio state → playing={}, will_pause={}", playing, playing);
+                            info!("  VLC audio state → playing={}, will_pause={}", playing, playing);
                             playing
                         }
                         "play" => {
                             let was = VLC_WAS_PLAYING.load(Ordering::SeqCst);
-                            println!("  VLC was_playing={}, will_resume={}", was, was);
+                            info!("  VLC was_playing={} will_resume={}", was, was);
                             was
                         }
                         _ => true,
                     };
 
                     if should_send {
-                        let appcommand: i16 = match action.as_str() {
-                            "pause" => APPCOMMAND_MEDIA_PAUSE,
-                            "play"  => APPCOMMAND_MEDIA_PLAY,
-                            _       => APPCOMMAND_MEDIA_PLAY_PAUSE,
+                        let appcommand: i32 = match action.as_str() {
+                            "pause" => APPCOMMAND_MEDIA_PAUSE as i32,
+                            "play"  => APPCOMMAND_MEDIA_PLAY as i32,
+                            _       => APPCOMMAND_MEDIA_PLAY_PAUSE as i32,
                         };
-                        let lparam_val = ((appcommand as isize) << 16) as isize;
+                        let lparam_val = (appcommand << 16) as isize;
                         let mut result: usize = 0;
                         let ret = unsafe {
                             SendMessageTimeoutW(
@@ -479,21 +510,22 @@ async fn control_media(action: String) -> Result<(), String> {
                                 lparam_val, SMTO_ABORTIFHUNG, 1000, &mut result,
                             )
                         };
-                        println!("✅ WM_APPCOMMAND {} sent to VLC (ret={} result={})", action, ret, result);
+                        info!("✅ WM_APPCOMMAND {} sent to VLC (ret={} result={})", action, ret, result);
                     } else {
-                        println!("⏭️ Skipping VLC WM_APPCOMMAND for action '{}' (wrong state)", action);
+                        info!("⏭️ Skipping VLC WM_APPCOMMAND for action '{}' (wrong state)", action);
                     }
                 } else {
-                    println!("⚠️ VLC running but no visible window found");
+                    info!("⚠️ VLC running but no visible window found");
                 }
             } else {
-                println!("ℹ️ VLC not running");
+                info!("ℹ️ VLC not running");
             }
         }
 
-        // ── SMTC: track which sessions we pause, only resume those ──────────────
-        // On pause: record which sources were Playing → pause them → store their IDs.
-        // On play:  only resume the sources we recorded, not all paused sessions.
+        // ── SMTC: selective pause/resume ────────────────────────────────────────
+        // On pause: record which sources were Playing, pause only those.
+        // On play:  resume only the sources we recorded — anything the user
+        //           manually paused during the break is left alone.
         let smtc_action = action.clone();
         let smtc_thread = std::thread::spawn(move || {
             use windows::Media::Control::{
@@ -501,26 +533,36 @@ async fn control_media(action: String) -> Result<(), String> {
                 GlobalSystemMediaTransportControlsSessionPlaybackStatus,
             };
 
+            info!("🎵 [SMTC] Starting '{}' operation", smtc_action);
+
             let manager = match GlobalSystemMediaTransportControlsSessionManager::RequestAsync()
                 .and_then(|op| op.get())
             {
                 Ok(m) => m,
-                Err(e) => { println!("⚠️ SMTC manager failed: {:?}", e); return; }
+                Err(e) => { info!("⚠️ [SMTC] Manager failed: {:?}", e); return; }
             };
 
             let sessions_view = match manager.GetSessions() {
                 Ok(s) => s,
-                Err(e) => { println!("⚠️ GetSessions failed: {:?}", e); return; }
+                Err(e) => { info!("⚠️ [SMTC] GetSessions failed: {:?}", e); return; }
             };
+
             let count = sessions_view.Size().unwrap_or(0);
-            println!("🎵 SMTC sessions: {}", count);
+            info!("🎵 [SMTC] Found {} session(s)", count);
+
+            if count == 0 {
+                info!("⚠️ [SMTC] No sessions — nothing to '{}'", smtc_action);
+                return;
+            }
 
             match smtc_action.as_str() {
                 "pause" => {
-                    // Pause only currently-playing sessions and record their IDs
                     let mut paused_sources: Vec<String> = Vec::new();
                     for i in 0..count {
-                        let session = match sessions_view.GetAt(i) { Ok(s) => s, Err(_) => continue };
+                        let session = match sessions_view.GetAt(i) {
+                            Ok(s) => s,
+                            Err(e) => { info!("  ⚠️ GetAt({}) failed: {:?}", i, e); continue }
+                        };
                         let source = session.SourceAppUserModelId()
                             .map(|s| s.to_string())
                             .unwrap_or_else(|_| format!("session_{}", i));
@@ -529,54 +571,89 @@ async fn control_media(action: String) -> Result<(), String> {
                             .map(|st| st == GlobalSystemMediaTransportControlsSessionPlaybackStatus::Playing)
                             .unwrap_or(false);
 
+                        info!("  SMTC[{}] source={} playing={}", i, source, is_playing);
+
                         if is_playing {
-                            println!("  ⏸ Pausing SMTC: {}", source);
-                            let _ = session.TryPauseAsync().and_then(|op| op.get());
-                            paused_sources.push(source);
+                            match session.TryPauseAsync().and_then(|op| op.get()) {
+                                Ok(_)  => { info!("  ⏸ Paused '{}'", source); paused_sources.push(source); }
+                                Err(e) => info!("  ❌ Pause failed for '{}': {:?}", source, e),
+                            }
                         } else {
-                            println!("  ⏭️ Skipped (not playing): {}", source);
+                            info!("  ⏭️ Skipping '{}' (not playing)", source);
                         }
                     }
-                    // Store the list of sources we paused
+                    // Store which sources we paused so resume is selective
                     if let Ok(mut guard) = smtc_paused_sources().lock() {
                         *guard = paused_sources.clone();
-                        println!("💾 Stored {} paused SMTC sources: {:?}", paused_sources.len(), paused_sources);
+                        info!("💾 [SMTC] Stored {} paused source(s): {:?}", paused_sources.len(), paused_sources);
                     }
                 }
                 "play" => {
-                    // Resume only the sessions we previously paused
-                    let paused_sources = if let Ok(guard) = smtc_paused_sources().lock() {
+                    // Only resume the exact sources we paused — leave anything the
+                    // user manually paused during the break untouched.
+                    let recorded = if let Ok(guard) = smtc_paused_sources().lock() {
                         guard.clone()
                     } else {
                         Vec::new()
                     };
-                    println!("  Resuming {} recorded SMTC sources: {:?}", paused_sources.len(), paused_sources);
+                    info!("▶ [SMTC] Recorded sources to resume ({} total): {:?}", recorded.len(), recorded);
+
+                    if recorded.is_empty() {
+                        info!("⚠️ [SMTC] No recorded sources — nothing to resume");
+                        return;
+                    }
 
                     for i in 0..count {
-                        let session = match sessions_view.GetAt(i) { Ok(s) => s, Err(_) => continue };
+                        let session = match sessions_view.GetAt(i) {
+                            Ok(s) => s,
+                            Err(e) => { info!("  ⚠️ GetAt({}) failed: {:?}", i, e); continue }
+                        };
                         let source = session.SourceAppUserModelId()
                             .map(|s| s.to_string())
                             .unwrap_or_else(|_| format!("session_{}", i));
 
-                        if paused_sources.contains(&source) {
-                            println!("  ▶ Resuming SMTC: {}", source);
-                            let _ = session.TryPlayAsync().and_then(|op| op.get());
+                        if recorded.contains(&source) {
+                            info!("  ▶ Resuming '{}'", source);
+                            match session.TryPlayAsync().and_then(|op| op.get()) {
+                                Ok(_)  => info!("  ✅ Resumed '{}'", source),
+                                Err(e) => info!("  ❌ Resume failed for '{}': {:?}", source, e),
+                            }
                         } else {
-                            println!("  ⏭️ Not our session, skipping: {}", source);
+                            info!("  ⏭️ Not our session, skipping '{}'", source);
                         }
                     }
                 }
                 _ => {
-                    // playpause toggle: act on all playing sessions
                     for i in 0..count {
                         let session = match sessions_view.GetAt(i) { Ok(s) => s, Err(_) => continue };
                         let _ = session.TryTogglePlayPauseAsync().and_then(|op| op.get());
                     }
                 }
             }
+
+            info!("🎵 [SMTC] '{}' operation complete", smtc_action);
         });
 
-        let _ = smtc_thread.join();
+        // For 'pause': wait up to 5s — must finish before the break window opens.
+        // For 'play':  wait up to 3s — slow resume is cosmetic, not critical.
+        let timeout = if action == "pause" {
+            std::time::Duration::from_secs(5)
+        } else {
+            std::time::Duration::from_secs(3)
+        };
+        let start = std::time::Instant::now();
+        loop {
+            if smtc_thread.is_finished() {
+                let _ = smtc_thread.join();
+                break;
+            }
+            if start.elapsed() >= timeout {
+                info!("⚠️ [SMTC] Thread timed out after {}s", timeout.as_secs());
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(50));
+        }
+        info!("🎵 [SMTC] control_media('{}') returning Ok", action);
         return Ok(());
     }
 
@@ -590,52 +667,79 @@ async fn control_media(action: String) -> Result<(), String> {
     }
 }
 
-/// Returns true if ANY SMTC session is currently Playing.
-/// Falls back to false (assume not playing) if SMTC is unavailable.
+/// Returns true if ANY media is currently playing — checks both SMTC sessions
+/// (Spotify, browsers, etc.) AND VLC via its Core Audio session (VLC never
+/// registers with SMTC so it must be checked separately).
 #[tauri::command]
 async fn is_media_playing() -> bool {
     #[cfg(target_os = "windows")]
     {
-        use windows::Media::Control::{
-            GlobalSystemMediaTransportControlsSessionManager,
-            GlobalSystemMediaTransportControlsSessionPlaybackStatus,
-        };
+        // ── Check VLC via Core Audio session ──
+        {
+            use sysinfo::System;
+            let mut sys = System::new();
+            sys.refresh_processes();
+            let vlc_pid = sys.processes().values()
+                .find(|p| p.name().to_string().to_lowercase().contains("vlc"))
+                .map(|p| p.pid().as_u32());
 
-        let result = async {
-            let manager =
-                GlobalSystemMediaTransportControlsSessionManager::RequestAsync()?.await?;
-            let sessions = manager.GetSessions()?;
-            let count = sessions.Size().unwrap_or(0);
-            for i in 0..count {
-                let session = match sessions.GetAt(i) {
-                    Ok(s) => s,
-                    Err(_) => continue,
-                };
-                let is_playing = session
-                    .GetPlaybackInfo()
-                    .and_then(|info| info.PlaybackStatus())
-                    .map(|st| {
-                        st == GlobalSystemMediaTransportControlsSessionPlaybackStatus::Playing
-                    })
-                    .unwrap_or(false);
-                if is_playing {
-                    return Ok::<bool, windows::core::Error>(true);
+            if let Some(pid) = vlc_pid {
+                info!("🎵 VLC running (pid={}), checking audio session...", pid);
+                if is_vlc_playing_via_audio(pid) {
+                    info!("🎵 Media playing state: true (VLC active audio session)");
+                    return true;
+                }
+                info!("🎵 VLC found but audio session inactive (paused/stopped)");
+            }
+        }
+
+        // ── Check SMTC sessions (Spotify, YouTube, etc.) ──
+        {
+            use windows::Media::Control::{
+                GlobalSystemMediaTransportControlsSessionManager,
+                GlobalSystemMediaTransportControlsSessionPlaybackStatus,
+            };
+
+            let result = async {
+                let manager =
+                    GlobalSystemMediaTransportControlsSessionManager::RequestAsync()?.await?;
+                let sessions = manager.GetSessions()?;
+                let count = sessions.Size().unwrap_or(0);
+                info!("🎵 SMTC sessions found: {}", count);
+                for i in 0..count {
+                    let session = match sessions.GetAt(i) {
+                        Ok(s) => s,
+                        Err(_) => continue,
+                    };
+                    let source = session.SourceAppUserModelId()
+                        .map(|s| s.to_string())
+                        .unwrap_or_else(|_| format!("session_{}", i));
+                    let is_playing = session
+                        .GetPlaybackInfo()
+                        .and_then(|info| info.PlaybackStatus())
+                        .map(|st| st == GlobalSystemMediaTransportControlsSessionPlaybackStatus::Playing)
+                        .unwrap_or(false);
+                    info!("  SMTC [{}] '{}' playing={}", i, source, is_playing);
+                    if is_playing {
+                        return Ok::<bool, windows::core::Error>(true);
+                    }
+                }
+                Ok::<bool, windows::core::Error>(false)
+            }
+            .await;
+
+            match result {
+                Ok(playing) => {
+                    info!("🎵 Media playing state: {} (SMTC)", playing);
+                    return playing;
+                }
+                Err(e) => {
+                    info!("⚠️ Could not read SMTC playback state: {:?}", e);
                 }
             }
-            Ok::<bool, windows::core::Error>(false)
         }
-        .await;
 
-        match result {
-            Ok(playing) => {
-                println!("🎵 Media playing state: {}", playing);
-                return playing;
-            }
-            Err(e) => {
-                println!("⚠️ Could not read SMTC playback state: {:?}", e);
-                return false;
-            }
-        }
+        false
     }
 
     #[cfg(not(target_os = "windows"))]
@@ -644,39 +748,43 @@ async fn is_media_playing() -> bool {
 
 #[tauri::command]
 fn play_chime() -> Result<(), String> {
-    println!("🔔 Playing chime sound...");
+    info!("🔔 Playing chime sound...");
 
     #[cfg(target_os = "windows")]
     {
         use std::process::Command;
 
-        // Try to play the Windows default notification sound
+        // Spawn detached — PowerShell startup can take 1-3 seconds when called
+        // synchronously via .output(), which freezes the break window at 00:00.
+        // The chime plays in the background; we don't need to wait for it.
         match Command::new("powershell")
+            .arg("-NoProfile")
+            .arg("-NonInteractive")
             .arg("-Command")
             .arg("[System.Media.SystemSounds]::Beep.Play()")
-            .output()
+            .spawn()
         {
             Ok(_) => {
-                println!("✅ Chime played successfully using SystemSounds");
+                info!("✅ Chime process spawned (non-blocking)");
                 Ok(())
             }
             Err(e) => {
-                println!("⚠️ SystemSounds failed, trying alternative: {}", e);
+                info!("⚠️ PowerShell spawn failed, trying MessageBeep fallback: {}", e);
 
-                // Fallback: Use rundll32 to play default system sound
+                // Fallback: rundll32 is much lighter than PowerShell, also spawn detached
                 match Command::new("rundll32")
                     .arg("user32.dll,MessageBeep")
                     .arg("0")
-                    .output()
+                    .spawn()
                 {
                     Ok(_) => {
-                        println!("✅ Chime played successfully using MessageBeep");
+                        info!("✅ Chime spawned via MessageBeep (non-blocking)");
                         Ok(())
                     }
                     Err(e2) => {
-                        println!("❌ Both chime methods failed");
+                        info!("❌ Both chime methods failed");
                         Err(format!(
-                            "Failed to play chime: SystemSounds error: {}, MessageBeep error: {}",
+                            "Failed to play chime: PowerShell error: {}, MessageBeep error: {}",
                             e, e2
                         ))
                     }
@@ -817,7 +925,7 @@ fn check_browser_meetings() -> Result<bool, String> {
                 // Check if the window title contains any meeting indicators
                 for indicator in &callback_data.meeting_indicators {
                     if title_lower.contains(indicator) {
-                        println!("🔍 Meeting detected in browser window: {}", title_string);
+                        info!("🔍 Meeting detected in browser window: {}", title_string);
                         callback_data.found_meeting = true;
                         return FALSE; // Stop enumeration
                     }
@@ -906,18 +1014,18 @@ fn load_settings(app_handle: tauri::AppHandle) -> Result<Option<AppSettings>, St
 
 #[tauri::command]
 fn debug_test_window(app_handle: tauri::AppHandle) -> Result<(), String> {
-    println!("🧪 Creating debug test window...");
+    info!("🧪 Creating debug test window...");
 
     // Close existing window if it exists
     if let Some(existing) = app_handle.get_webview_window("debug_test") {
-        println!("📄 Closing existing debug test window");
+        info!("📄 Closing existing debug test window");
         let _ = existing.close();
     }
 
     // Create window in separate thread as recommended by Tauri docs
     let handle = app_handle.clone();
     std::thread::spawn(move || {
-        println!("📂 Attempting to load: test.html");
+        info!("📂 Attempting to load: test.html");
         match WebviewWindowBuilder::new(&handle, "debug_test", WebviewUrl::App("test.html".into()))
             .title("Debug Test Window - Using test.html")
             .inner_size(500.0, 400.0)
@@ -930,21 +1038,21 @@ fn debug_test_window(app_handle: tauri::AppHandle) -> Result<(), String> {
             .build()
         {
             Ok(window) => {
-                println!("✅ Debug test window created successfully!");
-                println!("🎯 Window label: {}", window.label());
-                println!("📋 Expected content: Colorful gradient with TEST SUCCESS message");
+                info!("✅ Debug test window created successfully!");
+                info!("🎯 Window label: {}", window.label());
+                info!("📋 Expected content: Colorful gradient with TEST SUCCESS message");
 
                 // Try to inject some debugging JavaScript after a delay
                 std::thread::sleep(std::time::Duration::from_millis(500));
                 let _ = window.eval("console.log('🔥 Debug test window JavaScript executed!'); document.title = 'TEST WINDOW LOADED';");
             }
             Err(e) => {
-                println!("❌ Failed to create debug test window: {}", e);
+                info!("❌ Failed to create debug test window: {}", e);
             }
         }
     });
 
-    println!("🚀 Debug test window creation initiated in separate thread");
+    info!("🚀 Debug test window creation initiated in separate thread");
     Ok(())
 }
 
@@ -956,14 +1064,11 @@ async fn get_primary_monitor_size(app_handle: tauri::AppHandle) -> Result<(u32, 
             Ok((size.width, size.height))
         }
         Ok(None) => {
-            // No monitor found, try to get screen size from system
-            println!("No primary monitor found, attempting to get screen size from system");
-            // Return a reasonable default that will be overridden by JavaScript
+            warn!("No primary monitor found, using default size");
             Ok((800, 600))
         }
         Err(e) => {
-            println!("Error getting monitor info: {}, using default size", e);
-            // Return a reasonable default that will be overridden by JavaScript
+            warn!("Error getting monitor info: {}, using default size", e);
             Ok((800, 600))
         }
     }
@@ -971,7 +1076,7 @@ async fn get_primary_monitor_size(app_handle: tauri::AppHandle) -> Result<(u32, 
 
 #[tauri::command]
 fn meeting_detected_notification(app_handle: tauri::AppHandle) -> Result<(), String> {
-    println!("🤝 Creating meeting detected notification window...");
+    info!("🤝 Creating meeting detected notification window...");
 
     WindowManager::close_existing_window(&app_handle, "meeting_notification");
     let config = WindowConfig::meeting_notification(&app_handle);
@@ -980,17 +1085,17 @@ fn meeting_detected_notification(app_handle: tauri::AppHandle) -> Result<(), Str
 
 #[tauri::command]
 fn break_ended_early(app_handle: tauri::AppHandle) -> Result<(), String> {
-    println!("🏃 Break ended early - user returned");
+    info!("🏃 Break ended early - user returned");
 
     // Try to notify the main window about early return
     if let Some(main_window) = app_handle.get_webview_window("main") {
-        println!("📱 Found main window, calling handleEarlyBreakReturn");
+        info!("📱 Found main window, calling handleEarlyBreakReturn");
         match main_window.eval("if (window.handleEarlyBreakReturn) { window.handleEarlyBreakReturn(); } else { console.error('handleEarlyBreakReturn function not found on window!'); }") {
-            Ok(_) => println!("✅ Successfully called handleEarlyBreakReturn"),
-            Err(e) => println!("❌ Error calling handleEarlyBreakReturn: {}", e),
+            Ok(_) => info!("✅ Successfully called handleEarlyBreakReturn"),
+            Err(e) => info!("❌ Error calling handleEarlyBreakReturn: {}", e),
         }
     } else {
-        println!("❌ Main window not found!");
+        info!("❌ Main window not found!");
     }
 
     Ok(())
@@ -998,7 +1103,7 @@ fn break_ended_early(app_handle: tauri::AppHandle) -> Result<(), String> {
 
 #[tauri::command]
 fn skip_break(app_handle: tauri::AppHandle) -> Result<(), String> {
-    println!("⏭️ Skip break requested");
+    info!("⏭️ Skip break requested");
 
     // Close pre-break window if it exists
     if let Some(window) = app_handle.get_webview_window("pre_break") {
@@ -1015,22 +1120,22 @@ fn skip_break(app_handle: tauri::AppHandle) -> Result<(), String> {
 
     // Notify main window that break was skipped
     if let Some(main_window) = app_handle.get_webview_window("main") {
-        println!("📱 Found main window, calling handleBreakSkipped");
+        info!("📱 Found main window, calling handleBreakSkipped");
         match main_window.eval("if (window.handleBreakSkipped) { window.handleBreakSkipped(); } else { console.error('handleBreakSkipped function not found on window!'); }") {
-            Ok(_) => println!("✅ Successfully called handleBreakSkipped"),
-            Err(e) => println!("❌ Error calling handleBreakSkipped: {}", e),
+            Ok(_) => info!("✅ Successfully called handleBreakSkipped"),
+            Err(e) => info!("❌ Error calling handleBreakSkipped: {}", e),
         }
     } else {
-        println!("❌ Main window not found!");
+        info!("❌ Main window not found!");
     }
 
-    println!("✅ Break skipped successfully");
+    info!("✅ Break skipped successfully");
     Ok(())
 }
 
 #[tauri::command]
 fn show_index_window(app_handle: tauri::AppHandle) -> Result<(), String> {
-    println!("Showing index window...");
+    info!("Showing index window...");
     if let Some(window) = app_handle.get_webview_window("main") {
         window.show().map_err(|e| e.to_string())?;
         window.set_focus().map_err(|e| e.to_string())?;
@@ -1065,18 +1170,18 @@ fn setup_system_tray(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> 
         .show_menu_on_left_click(false)
         .on_menu_event(move |app, event| match event.id.as_ref() {
             "quit" => {
-                println!("🚪 Quit selected from tray menu");
+                info!("🚪 Quit selected from tray menu");
                 app.exit(0);
             }
             "show" => {
-                println!("👁️ Show selected from tray menu");
+                info!("👁️ Show selected from tray menu");
                 if let Some(window) = app.get_webview_window("main") {
                     let _ = window.show();
                     let _ = window.set_focus();
                 }
             }
             "hide" => {
-                println!("🫥 Hide selected from tray menu");
+                info!("🫥 Hide selected from tray menu");
                 if let Some(window) = app.get_webview_window("main") {
                     let _ = window.hide();
                 }
@@ -1094,11 +1199,11 @@ fn setup_system_tray(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> 
                 if let Some(window) = app.get_webview_window("main") {
                     if window.is_visible().unwrap_or(false) {
                         let _ = window.hide();
-                        println!("🫥 Main window hidden via tray click");
+                        info!("🫥 Main window hidden via tray click");
                     } else {
                         let _ = window.show();
                         let _ = window.set_focus();
-                        println!("👁️ Main window shown via tray click");
+                        info!("👁️ Main window shown via tray click");
                     }
                 }
             }

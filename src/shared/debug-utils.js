@@ -140,6 +140,40 @@ export class DebugUtils {
     }
   }
 
+  static async testUpdateCheck() {
+    try {
+      this.log('Opening update notification with mock data...');
+      await invoke('show_update_notification', {
+        version: 'v0.0.0-TEST',
+        notes: [
+          '## What\'s New',
+          '',
+          '### ✨ New Features',
+          '- Added smart break scheduling based on activity detection',
+          '- New **Focus Mode** that blocks distracting apps during breaks',
+          '- Pre-break warning now supports custom messages',
+          '',
+          '### 🐛 Bug Fixes',
+          '- Fixed crash on break end when media player was running',
+          '- Resolved 00:00 freeze caused by blocking `play_chime` call',
+          '- Fixed nested scrollbar in update notification window',
+          '',
+          '### ⚡ Performance',
+          '- Reduced startup time by ~40%',
+          '- Media control now non-blocking for instant break close',
+          '',
+          '---',
+          '_Thank you for using Break Reminder Pro!_',
+        ].join('\n'),
+        downloadUrl: 'https://github.com',
+        publishedAt: new Date().toISOString(),
+      });
+      this.log('✅ Update notification window opened');
+    } catch (error) {
+      this.log(`❌ Error showing update notification: ${error}`);
+    }
+  }
+
   /**
    * Window control functions
    */
@@ -220,6 +254,7 @@ export class DebugUtils {
     this.log('  👥 Meeting Check - Tests desktop meeting detection');
     this.log('  🌐 Browser Meeting - Tests browser meeting detection');
     this.log('  🚀 Autostart - Tests Windows autostart status');
+    this.log('  🆕 Update Notification - Opens update window with mock data');
     this.log('  🗑️ Clear Settings - Resets all settings to defaults');
     this.log('');
     this.log('WINDOW CONTROLS:');

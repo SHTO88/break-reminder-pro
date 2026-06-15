@@ -1,3 +1,4 @@
+use log::{info, warn};
 use tauri::{AppHandle, Manager, WebviewUrl, WebviewWindowBuilder};
 use std::thread;
 use std::time::Duration;
@@ -19,6 +20,9 @@ pub struct WindowConfig {
     pub transparent: bool,
     pub shadow: bool,
     pub position: Option<(f64, f64)>,
+    /// Optional JS snippet injected after the window loads (used to pass rich
+    /// data that would be unsafe or too long to embed in a query string).
+    pub inject_js: Option<String>,
 }
 
 impl Default for WindowConfig {
@@ -40,6 +44,7 @@ impl Default for WindowConfig {
             transparent: false,
             shadow: true,
             position: None,
+            inject_js: None,
         }
     }
 }
@@ -51,7 +56,7 @@ impl WindowManager {
         let handle = app_handle.clone();
         
         thread::spawn(move || {
-            println!("📂 Creating window '{}' with URL: {}", config.label, config.url);
+            info!("Creating window '{}' url='{}'", config.label, config.url);
             
             let mut builder = WebviewWindowBuilder::new(
                 &handle,
@@ -74,72 +79,58 @@ impl WindowManager {
             // Set position if provided
             if let Some((x, y)) = config.position {
                 builder = builder.position(x, y);
-                println!("🎯 Setting initial position for '{}': ({:.0}, {:.0})", config.label, x, y);
             }
 
             match builder.build() {
                 Ok(window) => {
-                    println!("✅ Window '{}' created successfully!", config.label);
+                    info!("Window '{}' created", config.label);
                     
-                    // Inject positioning signal IMMEDIATELY to prevent JS positioning conflicts
+                    // Inject positioning signal to prevent JS positioning conflicts
                     if config.position.is_some() {
                         let js_code = format!(
-                            "window.RUST_POSITIONED = true; \
-                             console.log('🔥 Window {} positioned by Rust - JS positioning disabled');",
-                            config.label
+                            "window.RUST_POSITIONED = true;",
                         );
                         let _ = window.eval(&js_code);
                     }
                     
                     // Wait for content to load
                     thread::sleep(Duration::from_millis(200));
+
+                    // Inject any custom JS payload (e.g. update data bypassing URL limits)
+                    if let Some(ref js) = config.inject_js {
+                        if let Err(e) = window.eval(js) {
+                            warn!("Failed to inject JS for '{}': {}", config.label, e);
+                        } else {
+                            info!("JS payload injected for '{}'", config.label);
+                        }
+                    }
                     
-                    // Double-check position if specified
+                    // Confirm position after content load
                     if let Some((x, y)) = config.position {
                         if let Err(e) = window.set_position(tauri::Position::Physical(tauri::PhysicalPosition { 
                             x: x as i32, 
                             y: y as i32 
                         })) {
-                            println!("⚠️ Failed to set position for '{}': {}", config.label, e);
-                        } else {
-                            println!("✅ Position confirmed for '{}': ({:.0}, {:.0})", config.label, x, y);
+                            warn!("Failed to set position for '{}': {}", config.label, e);
                         }
                     }
                     
                     // Show window after positioning
                     if let Err(e) = window.show() {
-                        println!("⚠️ Failed to show window '{}': {}", config.label, e);
+                        warn!("Failed to show window '{}': {}", config.label, e);
                     } else {
-                        println!("✅ Window '{}' shown successfully", config.label);
-                    }
-                    
-                    // Set always on top for notification windows
-                    if config.always_on_top {
-                        if let Err(e) = window.set_always_on_top(true) {
-                            println!("⚠️ Failed to set always on top for '{}': {}", config.label, e);
-                        }
+                        info!("Window '{}' shown", config.label);
                     }
                     
                     // Focus if required
                     if config.focused {
                         if let Err(e) = window.set_focus() {
-                            println!("⚠️ Failed to focus window '{}': {}", config.label, e);
+                            warn!("Failed to focus window '{}': {}", config.label, e);
                         }
-                    }
-                    
-                    // Final positioning confirmation
-                    thread::sleep(Duration::from_millis(100));
-                    if config.position.is_some() {
-                        let final_js = format!(
-                            "console.log('🎯 Final positioning confirmation for {}'); \
-                             document.title = '{} - POSITIONED BY RUST';",
-                            config.label, config.title
-                        );
-                        let _ = window.eval(&final_js);
                     }
                 }
                 Err(e) => {
-                    println!("❌ Failed to create window '{}': {}", config.label, e);
+                    warn!("Failed to create window '{}': {}", config.label, e);
                 }
             }
         });
@@ -193,8 +184,11 @@ impl WindowManager {
 
     pub fn close_existing_window(app_handle: &AppHandle, label: &str) {
         if let Some(existing) = app_handle.get_webview_window(label) {
-            println!("📄 Closing existing window '{}'", label);
+            info!("Closing existing window '{}'", label);
             let _ = existing.close();
+            // Brief pause to let the close event propagate before the caller
+            // tries to create a new window with the same label.
+            thread::sleep(Duration::from_millis(350));
         }
     }
 }
@@ -219,6 +213,7 @@ impl WindowConfig {
             transparent: false,
             shadow: false,
             position: None,
+            inject_js: None,
         }
     }
 
@@ -244,6 +239,7 @@ impl WindowConfig {
             transparent: false,
             shadow: true,
             position: Some(position),
+            inject_js: None,
         }
     }
 
@@ -269,6 +265,7 @@ impl WindowConfig {
             transparent: true,
             shadow: false,
             position: Some(position),
+            inject_js: None,
         }
     }
 
@@ -294,6 +291,7 @@ impl WindowConfig {
             transparent: true,
             shadow: false,
             position: Some(position),
+            inject_js: None,
         }
     }
 
@@ -304,29 +302,34 @@ impl WindowConfig {
         download_url: String,
         published_at: String,
     ) -> Self {
-        let window_width = 450.0;
-        let window_height = 300.0;
+        let window_width = 500.0;
+        let window_height = 480.0;
         let position = WindowManager::get_screen_center_position(app_handle, window_width, window_height);
-        
-        // URL encode the parameters
-        let encoded_version = urlencoding::encode(&version);
-        let encoded_notes = urlencoding::encode(&notes);
-        let encoded_url = urlencoding::encode(&download_url);
-        let encoded_date = urlencoding::encode(&published_at);
-        
+
+        // Escape the strings for safe embedding in a JS string literal.
+        // Using JSON serialization is the safest way — serde_json escapes all
+        // special characters including newlines, quotes, and backslashes.
+        let version_json     = serde_json::to_string(&version).unwrap_or_else(|_| "\"\"".into());
+        let notes_json       = serde_json::to_string(&notes).unwrap_or_else(|_| "\"\"".into());
+        let url_json         = serde_json::to_string(&download_url).unwrap_or_else(|_| "\"\"".into());
+        let published_json   = serde_json::to_string(&published_at).unwrap_or_else(|_| "\"\"".into());
+
+        let inject = format!(
+            "window.__UPDATE_DATA__ = {{ version: {}, notes: {}, downloadUrl: {}, publishedAt: {} }}; \
+             console.log('✅ Update data injected for version:', window.__UPDATE_DATA__.version);",
+            version_json, notes_json, url_json, published_json
+        );
+
         Self {
             label: "update_notification".to_string(),
-            url: format!(
-                "update_notification.html?version={}&notes={}&url={}&date={}",
-                encoded_version, encoded_notes, encoded_url, encoded_date
-            ),
+            url: "update_notification.html".to_string(),
             title: "Update Available".to_string(),
             width: window_width,
             height: window_height,
             fullscreen: false,
             always_on_top: true,
             decorations: true,
-            resizable: false,
+            resizable: true,
             focused: true,
             visible: false,
             skip_taskbar: false,
@@ -334,6 +337,7 @@ impl WindowConfig {
             transparent: false,
             shadow: true,
             position: Some(position),
+            inject_js: Some(inject),
         }
     }
 }
