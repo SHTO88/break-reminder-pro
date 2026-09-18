@@ -1,7 +1,1 @@
-/* This file is now integrated into index.html for the new design */
-/* The new design uses embedded CSS for better performance and maintainability */
-
-/* Legacy styles are preserved in case they're needed for other components */
-.legacy-styles {
-  display: none;
-}
+@import './shared/styles.css';

@@ -682,7 +682,15 @@
         skipMediaBtn.style.display = 'none';
       }
 
-      console.log('✅ Force break UI ready and visible');
+      // If running as a secondary monitor overlay, streamline the UI
+      const isSecondary = new URLSearchParams(window.location.search).get('secondary') === 'true';
+      if (isSecondary) {
+        const instructions = document.querySelector('.instructions');
+        if (instructions) instructions.style.display = 'none';
+        if (unlockContainer) unlockContainer.style.display = 'none';
+      }
+
+      console.log('✅ Force break UI ready and visible', isSecondary ? '(Secondary monitor)' : '(Primary monitor)');
 
       setTimeout(startTimer, 200);
 

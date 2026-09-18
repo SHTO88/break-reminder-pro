@@ -79,43 +79,19 @@ impl WindowManager {
             // Set position if provided
             if let Some((x, y)) = config.position {
                 builder = builder.position(x, y);
+                builder = builder.initialization_script("window.RUST_POSITIONED = true;");
+            }
+
+            // Inject any custom JS payload (runs before DOM loads, eliminating race conditions)
+            if let Some(ref js) = config.inject_js {
+                builder = builder.initialization_script(js);
             }
 
             match builder.build() {
                 Ok(window) => {
                     info!("Window '{}' created", config.label);
                     
-                    // Inject positioning signal to prevent JS positioning conflicts
-                    if config.position.is_some() {
-                        let js_code = format!(
-                            "window.RUST_POSITIONED = true;",
-                        );
-                        let _ = window.eval(&js_code);
-                    }
-                    
-                    // Wait for content to load
-                    thread::sleep(Duration::from_millis(200));
-
-                    // Inject any custom JS payload (e.g. update data bypassing URL limits)
-                    if let Some(ref js) = config.inject_js {
-                        if let Err(e) = window.eval(js) {
-                            warn!("Failed to inject JS for '{}': {}", config.label, e);
-                        } else {
-                            info!("JS payload injected for '{}'", config.label);
-                        }
-                    }
-                    
-                    // Confirm position after content load
-                    if let Some((x, y)) = config.position {
-                        if let Err(e) = window.set_position(tauri::Position::Physical(tauri::PhysicalPosition { 
-                            x: x as i32, 
-                            y: y as i32 
-                        })) {
-                            warn!("Failed to set position for '{}': {}", config.label, e);
-                        }
-                    }
-                    
-                    // Show window after positioning
+                    // Show window
                     if let Err(e) = window.show() {
                         warn!("Failed to show window '{}': {}", config.label, e);
                     } else {
@@ -136,6 +112,80 @@ impl WindowManager {
         });
         
         Ok(())
+    }
+
+    /// Spawns a force break overlay on every available monitor to prevent multi-monitor leak.
+    pub fn create_force_break_windows(app_handle: &AppHandle, duration: u32) -> Result<(), String> {
+        Self::close_all_force_break_windows(app_handle);
+
+        let monitors = app_handle.available_monitors().unwrap_or_default();
+        let primary_monitor = app_handle.primary_monitor().ok().flatten();
+
+        if monitors.is_empty() {
+            let config = WindowConfig::force_break(duration);
+            return Self::create_window(app_handle.clone(), config);
+        }
+
+        let primary_pos = primary_monitor.as_ref().map(|m| *m.position());
+        let mut primary_created = false;
+        let mut secondary_idx = 1;
+
+        for monitor in &monitors {
+            let is_primary = primary_pos.map_or(!primary_created, |p| p == *monitor.position());
+
+            let (label, url) = if is_primary && !primary_created {
+                primary_created = true;
+                (
+                    "force_break".to_string(),
+                    format!("force_break.html?duration={}", duration),
+                )
+            } else {
+                let lbl = format!("force_break_{}", secondary_idx);
+                secondary_idx += 1;
+                (
+                    lbl,
+                    format!("force_break.html?duration={}&secondary=true", duration),
+                )
+            };
+
+            let mon_pos = monitor.position();
+            let mon_size = monitor.size();
+
+            let config = WindowConfig {
+                label,
+                url,
+                title: "Break Time".to_string(),
+                width: mon_size.width as f64,
+                height: mon_size.height as f64,
+                fullscreen: true,
+                always_on_top: true,
+                decorations: false,
+                resizable: false,
+                focused: is_primary,
+                visible: false,
+                skip_taskbar: true,
+                maximized: true,
+                transparent: false,
+                shadow: false,
+                position: Some((mon_pos.x as f64, mon_pos.y as f64)),
+                inject_js: None,
+            };
+
+            let _ = Self::create_window(app_handle.clone(), config);
+        }
+
+        Ok(())
+    }
+
+    /// Closes all force break windows across all monitors.
+    pub fn close_all_force_break_windows(app_handle: &AppHandle) {
+        for (label, window) in app_handle.webview_windows() {
+            if label.starts_with("force_break") {
+                info!("Closing force break window '{}'", label);
+                let _ = window.close();
+            }
+        }
+        thread::sleep(Duration::from_millis(150));
     }
 
     pub fn get_screen_center_position(app_handle: &AppHandle, window_width: f64, window_height: f64) -> (f64, f64) {
@@ -183,12 +233,16 @@ impl WindowManager {
     }
 
     pub fn close_existing_window(app_handle: &AppHandle, label: &str) {
+        if label == "force_break" || label.starts_with("force_break") {
+            Self::close_all_force_break_windows(app_handle);
+            return;
+        }
         if let Some(existing) = app_handle.get_webview_window(label) {
             info!("Closing existing window '{}'", label);
             let _ = existing.close();
             // Brief pause to let the close event propagate before the caller
             // tries to create a new window with the same label.
-            thread::sleep(Duration::from_millis(350));
+            thread::sleep(Duration::from_millis(150));
         }
     }
 }

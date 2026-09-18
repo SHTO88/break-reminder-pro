@@ -711,9 +711,21 @@ window.addEventListener("DOMContentLoaded", async () => {
   // Make functions available globally for Rust to call
   window.handleBreakSkipped = handleBreakSkipped;
   window.handleEarlyBreakReturn = handleEarlyBreakReturn;
+
+  // Listen for Tauri events from backend
+  if (window.__TAURI__?.event?.listen) {
+    window.__TAURI__.event.listen('break-ended-early', () => {
+      console.log('📡 Received break-ended-early event from backend');
+      handleEarlyBreakReturn();
+    });
+    window.__TAURI__.event.listen('break-skipped', () => {
+      console.log('📡 Received break-skipped event from backend');
+      handleBreakSkipped();
+    });
+  }
   
   // Debug: Log when functions are made available
-  console.log('✅ Global functions registered:', {
+  console.log('✅ Global functions and event listeners registered:', {
     handleBreakSkipped: typeof window.handleBreakSkipped,
     handleEarlyBreakReturn: typeof window.handleEarlyBreakReturn
   });

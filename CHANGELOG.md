@@ -5,6 +5,27 @@ All notable changes to Break Reminder Pro will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0] - 2026-09-19
+
+### Added
+
+- **Multi-monitor Force Break support** — When a force break starts, fullscreen overlay windows are now spawned across all available monitors (`create_force_break_windows`), preventing distractions or leaks on multi-display setups. Secondary monitors run a clean, non-interactive backdrop (`secondary=true`), while the primary monitor displays the interactive controls. All overlays close synchronously when the break finishes or is skipped.
+- **Tauri event-based IPC** — Backend now emits `break-ended-early` and `break-skipped` events across webviews, making break state coordination robust and eliminating brittle window-eval timing issues.
+
+### Fixed
+
+- **Command injection risk in URL opening** — Replaced raw `cmd.exe /c start` in `open_url` with `tauri-plugin-opener`, preventing syntax failures or command execution issues from special characters in URLs.
+- **Arbitrary sleep delays during window creation** — Replaced post-creation `eval()` calls with `WebviewWindowBuilder::initialization_script(...)`, ensuring positioning signals and scripts are injected deterministically before DOM load.
+
+### Performance
+
+- **Eliminated CPU spikes from process scans** — Replaced recurring `sysinfo::System::new_all()` invocations across meeting checks, media controls, and lock screen checks with an efficient process-only cache (`with_refreshed_processes`) using `OnceLock<Mutex<sysinfo::System>>`.
+- **Zero-overhead chime and screen locking** — Replaced `powershell.exe` (chime) and `rundll32.exe` (screen lock) subprocess spawning with direct Win32 `MessageBeep(MB_ICONASTERISK)` and `LockWorkStation()` API calls, eliminating 1–3s latency and 30–50 MB RAM spikes.
+
+### Changed
+
+- **Consolidated shared CSS** — Moved duplicate styling (buttons, toggle controls, color tokens, and layout resets) from `index.html`, `settings.html`, and `notify.html` into `src/shared/styles.css`.
+
 ## [1.1.2] - 2026-06-15
 
 ### Fixed

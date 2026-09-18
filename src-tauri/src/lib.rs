@@ -9,14 +9,30 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Mutex, OnceLock};
 use tauri::menu::{Menu, MenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
-use tauri::{AppHandle, Manager, WebviewUrl, WebviewWindowBuilder, WindowEvent};
+use tauri::{AppHandle, Emitter, Manager, WebviewUrl, WebviewWindowBuilder, WindowEvent};
 
-// For autostart plugin
+// For autostart and opener plugins
 use tauri_plugin_autostart::ManagerExt;
+use tauri_plugin_opener::OpenerExt;
 
 // Import our window manager module
 mod window_manager;
 use window_manager::{WindowConfig, WindowManager};
+
+/// Query process information efficiently without full hardware/network scans.
+/// Reuses an allocated `sysinfo::System` instance across queries.
+fn with_refreshed_processes<F, R>(f: F) -> R
+where
+    F: FnOnce(&sysinfo::System) -> R,
+{
+    static SYSTEM_INFO: OnceLock<Mutex<sysinfo::System>> = OnceLock::new();
+    let mut sys = SYSTEM_INFO
+        .get_or_init(|| Mutex::new(sysinfo::System::new()))
+        .lock()
+        .unwrap();
+    sys.refresh_processes_specifics(sysinfo::ProcessRefreshKind::new());
+    f(&sys)
+}
 
 /// Shared flag: was media playing when the break started?
 /// Written by main window before break, read by break windows on close.
@@ -157,13 +173,15 @@ fn force_break_window(app_handle: tauri::AppHandle, duration: Option<u32>) -> Re
         break_duration
     );
 
-    WindowManager::close_existing_window(&app_handle, "force_break");
-    let config = WindowConfig::force_break(break_duration);
-    WindowManager::create_window(app_handle, config)
+    WindowManager::create_force_break_windows(&app_handle, break_duration)
 }
 
 #[tauri::command]
 fn close_window(app_handle: tauri::AppHandle, label: String) -> Result<(), String> {
+    if label == "force_break" || label.starts_with("force_break") {
+        WindowManager::close_all_force_break_windows(&app_handle);
+        return Ok(());
+    }
     if let Some(window) = app_handle.get_webview_window(&label) {
         window
             .close()
@@ -265,34 +283,12 @@ fn get_app_version() -> String {
 }
 
 #[tauri::command]
-async fn open_url(url: String) -> Result<(), String> {
+async fn open_url(app_handle: tauri::AppHandle, url: String) -> Result<(), String> {
     info!("🌐 Opening URL: {}", url);
-
-    #[cfg(target_os = "windows")]
-    {
-        std::process::Command::new("cmd")
-            .args(["/c", "start", &url])
-            .spawn()
-            .map_err(|e| format!("Failed to open URL: {}", e))?;
-    }
-
-    #[cfg(target_os = "macos")]
-    {
-        std::process::Command::new("open")
-            .arg(&url)
-            .spawn()
-            .map_err(|e| format!("Failed to open URL: {}", e))?;
-    }
-
-    #[cfg(target_os = "linux")]
-    {
-        std::process::Command::new("xdg-open")
-            .arg(&url)
-            .spawn()
-            .map_err(|e| format!("Failed to open URL: {}", e))?;
-    }
-
-    Ok(())
+    app_handle
+        .opener()
+        .open_url(&url, None::<&str>)
+        .map_err(|e| format!("Failed to open URL: {}", e))
 }
 
 #[tauri::command]
@@ -316,12 +312,14 @@ fn show_update_notification(
 fn lock_screen() -> Result<(), String> {
     #[cfg(target_os = "windows")]
     {
-        use std::process::Command;
-        Command::new("rundll32.exe")
-            .arg("user32.dll,LockWorkStation")
-            .spawn()
-            .map_err(|e| format!("Failed to lock screen: {}", e))?;
-        Ok(())
+        use winapi::um::winuser::LockWorkStation;
+        let success = unsafe { LockWorkStation() };
+        if success != 0 {
+            info!("🔒 Screen locked successfully via LockWorkStation");
+            Ok(())
+        } else {
+            Err("Failed to lock screen".to_string())
+        }
     }
     #[cfg(not(target_os = "windows"))]
     {
@@ -407,10 +405,10 @@ fn is_vlc_playing_via_audio(vlc_pid: u32) -> bool {
 fn is_screen_locked() -> bool {
     #[cfg(target_os = "windows")]
     {
-        use sysinfo::System;
-        let sys = System::new_all();
-        let locked = sys.processes().values().any(|proc| {
-            proc.name().to_lowercase() == "logonui.exe"
+        let locked = with_refreshed_processes(|sys| {
+            sys.processes().values().any(|proc| {
+                proc.name().to_lowercase() == "logonui.exe"
+            })
         });
         if locked {
             info!("🔒 Screen is locked (LogonUI.exe detected)");
@@ -439,17 +437,15 @@ async fn control_media(action: String) -> Result<(), String> {
             };
             use winapi::shared::minwindef::{BOOL, LPARAM, TRUE};
             use winapi::shared::windef::HWND;
-            use sysinfo::System;
 
-            let mut sys = System::new();
-            sys.refresh_processes();
-
-            let vlc_pid: Option<u32> = sys.processes().values()
-                .find(|p| p.name().to_string().to_lowercase().contains("vlc"))
-                .map(|p| { 
-                    info!("  VLC process found: '{}' pid={}", p.name(), p.pid().as_u32());
-                    p.pid().as_u32() 
-                });
+            let vlc_pid: Option<u32> = with_refreshed_processes(|sys| {
+                sys.processes().values()
+                    .find(|p| p.name().to_lowercase().contains("vlc"))
+                    .map(|p| {
+                        info!("  VLC process found: '{}' pid={}", p.name(), p.pid().as_u32());
+                        p.pid().as_u32()
+                    })
+            });
 
             if let Some(pid) = vlc_pid {
                 struct SearchData { pid: u32, hwnd: HWND }
@@ -676,12 +672,11 @@ async fn is_media_playing() -> bool {
     {
         // ── Check VLC via Core Audio session ──
         {
-            use sysinfo::System;
-            let mut sys = System::new();
-            sys.refresh_processes();
-            let vlc_pid = sys.processes().values()
-                .find(|p| p.name().to_string().to_lowercase().contains("vlc"))
-                .map(|p| p.pid().as_u32());
+            let vlc_pid = with_refreshed_processes(|sys| {
+                sys.processes().values()
+                    .find(|p| p.name().to_lowercase().contains("vlc"))
+                    .map(|p| p.pid().as_u32())
+            });
 
             if let Some(pid) = vlc_pid {
                 info!("🎵 VLC running (pid={}), checking audio session...", pid);
@@ -752,44 +747,15 @@ fn play_chime() -> Result<(), String> {
 
     #[cfg(target_os = "windows")]
     {
-        use std::process::Command;
-
-        // Spawn detached — PowerShell startup can take 1-3 seconds when called
-        // synchronously via .output(), which freezes the break window at 00:00.
-        // The chime plays in the background; we don't need to wait for it.
-        match Command::new("powershell")
-            .arg("-NoProfile")
-            .arg("-NonInteractive")
-            .arg("-Command")
-            .arg("[System.Media.SystemSounds]::Beep.Play()")
-            .spawn()
-        {
-            Ok(_) => {
-                info!("✅ Chime process spawned (non-blocking)");
-                Ok(())
-            }
-            Err(e) => {
-                info!("⚠️ PowerShell spawn failed, trying MessageBeep fallback: {}", e);
-
-                // Fallback: rundll32 is much lighter than PowerShell, also spawn detached
-                match Command::new("rundll32")
-                    .arg("user32.dll,MessageBeep")
-                    .arg("0")
-                    .spawn()
-                {
-                    Ok(_) => {
-                        info!("✅ Chime spawned via MessageBeep (non-blocking)");
-                        Ok(())
-                    }
-                    Err(e2) => {
-                        info!("❌ Both chime methods failed");
-                        Err(format!(
-                            "Failed to play chime: PowerShell error: {}, MessageBeep error: {}",
-                            e, e2
-                        ))
-                    }
-                }
-            }
+        use winapi::um::winuser::{MessageBeep, MB_ICONASTERISK};
+        let success = unsafe { MessageBeep(MB_ICONASTERISK) };
+        if success != 0 {
+            info!("✅ Native chime played via MessageBeep");
+            Ok(())
+        } else {
+            // Fallback with default beep
+            unsafe { MessageBeep(0xFFFFFFFF); }
+            Ok(())
         }
     }
 
@@ -801,8 +767,6 @@ fn play_chime() -> Result<(), String> {
 
 #[tauri::command]
 fn is_meeting_active() -> Result<bool, String> {
-    use sysinfo::System;
-
     // Check for desktop meeting applications
     let meeting_processes = [
         "zoom.exe",
@@ -812,10 +776,11 @@ fn is_meeting_active() -> Result<bool, String> {
         "meet.exe",
     ];
 
-    let sys = System::new_all();
-    let desktop_meeting_found = sys.processes().values().any(|proc| {
-        let name = proc.name().to_lowercase();
-        meeting_processes.iter().any(|mp| name.contains(mp))
+    let desktop_meeting_found = with_refreshed_processes(|sys| {
+        sys.processes().values().any(|proc| {
+            let name = proc.name().to_lowercase();
+            meeting_processes.iter().any(|mp| name.contains(mp))
+        })
     });
 
     if desktop_meeting_found {
@@ -880,10 +845,11 @@ fn check_browser_meetings() -> Result<bool, String> {
     ];
 
     // First check if any browsers are running
-    let sys = sysinfo::System::new_all();
-    let browser_running = sys.processes().values().any(|proc| {
-        let name = proc.name().to_lowercase();
-        browser_processes.iter().any(|bp| name.contains(bp))
+    let browser_running = with_refreshed_processes(|sys| {
+        sys.processes().values().any(|proc| {
+            let name = proc.name().to_lowercase();
+            browser_processes.iter().any(|bp| name.contains(bp))
+        })
     });
 
     if !browser_running {
@@ -1087,13 +1053,15 @@ fn meeting_detected_notification(app_handle: tauri::AppHandle) -> Result<(), Str
 fn break_ended_early(app_handle: tauri::AppHandle) -> Result<(), String> {
     info!("🏃 Break ended early - user returned");
 
-    // Try to notify the main window about early return
+    // Emit event across app
+    if let Err(e) = app_handle.emit("break-ended-early", ()) {
+        warn!("Failed to emit break-ended-early event: {}", e);
+    }
+
+    // Fallback invocation for direct JS callback
     if let Some(main_window) = app_handle.get_webview_window("main") {
-        info!("📱 Found main window, calling handleEarlyBreakReturn");
-        match main_window.eval("if (window.handleEarlyBreakReturn) { window.handleEarlyBreakReturn(); } else { console.error('handleEarlyBreakReturn function not found on window!'); }") {
-            Ok(_) => info!("✅ Successfully called handleEarlyBreakReturn"),
-            Err(e) => info!("❌ Error calling handleEarlyBreakReturn: {}", e),
-        }
+        info!("📱 Found main window, calling handleEarlyBreakReturn fallback");
+        let _ = main_window.eval("if (window.handleEarlyBreakReturn) { window.handleEarlyBreakReturn(); }");
     } else {
         info!("❌ Main window not found!");
     }
@@ -1110,21 +1078,21 @@ fn skip_break(app_handle: tauri::AppHandle) -> Result<(), String> {
         let _ = window.close();
     }
 
-    // Close any active break windows
-    if let Some(window) = app_handle.get_webview_window("force_break") {
-        let _ = window.close();
-    }
+    // Close any active break windows across all monitors
+    WindowManager::close_all_force_break_windows(&app_handle);
     if let Some(window) = app_handle.get_webview_window("notify") {
         let _ = window.close();
     }
 
-    // Notify main window that break was skipped
+    // Emit event across app
+    if let Err(e) = app_handle.emit("break-skipped", ()) {
+        warn!("Failed to emit break-skipped event: {}", e);
+    }
+
+    // Fallback invocation for direct JS callback
     if let Some(main_window) = app_handle.get_webview_window("main") {
-        info!("📱 Found main window, calling handleBreakSkipped");
-        match main_window.eval("if (window.handleBreakSkipped) { window.handleBreakSkipped(); } else { console.error('handleBreakSkipped function not found on window!'); }") {
-            Ok(_) => info!("✅ Successfully called handleBreakSkipped"),
-            Err(e) => info!("❌ Error calling handleBreakSkipped: {}", e),
-        }
+        info!("📱 Found main window, calling handleBreakSkipped fallback");
+        let _ = main_window.eval("if (window.handleBreakSkipped) { window.handleBreakSkipped(); }");
     } else {
         info!("❌ Main window not found!");
     }
