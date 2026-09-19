@@ -39,7 +39,7 @@
       "digestAlgorithm": "sha256",
       "timestampUrl": "",
       "nsis": {
-        "template": "windows/installer.nsi"
+        "installerHooks": "windows/installer-hooks.nsh"
       }
     }
   }
