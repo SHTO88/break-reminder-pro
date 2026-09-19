@@ -1,5 +1,5 @@
 use log::{info, warn};
-use tauri::{AppHandle, Manager, WebviewUrl, WebviewWindowBuilder};
+use tauri::{AppHandle, LogicalPosition, Manager, Position, WebviewUrl, WebviewWindowBuilder};
 use std::thread;
 use std::time::Duration;
 
@@ -90,6 +90,13 @@ impl WindowManager {
             match builder.build() {
                 Ok(window) => {
                     info!("Window '{}' created", config.label);
+
+                    // Confirm position in logical coordinates
+                    if let Some((x, y)) = config.position {
+                        if let Err(e) = window.set_position(Position::Logical(LogicalPosition { x, y })) {
+                            warn!("Failed to confirm position for '{}': {}", config.label, e);
+                        }
+                    }
                     
                     // Show window
                     if let Err(e) = window.show() {
@@ -148,15 +155,16 @@ impl WindowManager {
                 )
             };
 
-            let mon_pos = monitor.position();
-            let mon_size = monitor.size();
+            let scale = monitor.scale_factor();
+            let mon_pos = monitor.position().to_logical::<f64>(scale);
+            let mon_size = monitor.size().to_logical::<f64>(scale);
 
             let config = WindowConfig {
                 label,
                 url,
                 title: "Break Time".to_string(),
-                width: mon_size.width as f64,
-                height: mon_size.height as f64,
+                width: mon_size.width,
+                height: mon_size.height,
                 fullscreen: true,
                 always_on_top: true,
                 decorations: false,
@@ -167,7 +175,7 @@ impl WindowManager {
                 maximized: true,
                 transparent: false,
                 shadow: false,
-                position: Some((mon_pos.x as f64, mon_pos.y as f64)),
+                position: Some((mon_pos.x, mon_pos.y)),
                 inject_js: None,
             };
 
@@ -191,20 +199,20 @@ impl WindowManager {
     pub fn get_screen_center_position(app_handle: &AppHandle, window_width: f64, window_height: f64) -> (f64, f64) {
         match app_handle.primary_monitor() {
             Ok(Some(monitor)) => {
-                let size = monitor.size();
-                let screen_width = size.width as f64;
-                let screen_height = size.height as f64;
+                let scale = monitor.scale_factor();
+                let mon_size = monitor.size().to_logical::<f64>(scale);
+                let mon_pos = monitor.position().to_logical::<f64>(scale);
                 
-                let x = (screen_width - window_width) / 2.0;
-                let y = (screen_height - window_height) / 2.0;
+                let x = mon_pos.x + (mon_size.width - window_width) / 2.0;
+                let y = mon_pos.y + (mon_size.height - window_height) / 2.0;
                 
-                println!("📺 Screen: {}x{}, Window: {}x{}, Center: ({:.0}, {:.0})", 
-                    screen_width, screen_height, window_width, window_height, x, y);
+                info!("📺 Primary Monitor (scale {:.2}): logical size {:.0}x{:.0}, pos ({:.0}, {:.0}) -> Center: ({:.0}, {:.0})", 
+                    scale, mon_size.width, mon_size.height, mon_pos.x, mon_pos.y, x, y);
                 
                 (x, y)
             }
             _ => {
-                println!("⚠️ Could not get monitor info, using default center position");
+                warn!("⚠️ Could not get monitor info, using default center position");
                 (200.0, 200.0)
             }
         }
@@ -213,20 +221,20 @@ impl WindowManager {
     pub fn get_bottom_center_position(app_handle: &AppHandle, window_width: f64, window_height: f64, margin_bottom: f64) -> (f64, f64) {
         match app_handle.primary_monitor() {
             Ok(Some(monitor)) => {
-                let size = monitor.size();
-                let screen_width = size.width as f64;
-                let screen_height = size.height as f64;
+                let scale = monitor.scale_factor();
+                let mon_size = monitor.size().to_logical::<f64>(scale);
+                let mon_pos = monitor.position().to_logical::<f64>(scale);
                 
-                let x = (screen_width - window_width) / 2.0;
-                let y = screen_height - window_height - margin_bottom;
+                let x = mon_pos.x + (mon_size.width - window_width) / 2.0;
+                let y = mon_pos.y + mon_size.height - window_height - margin_bottom;
                 
-                println!("📺 Screen: {}x{}, Window: {}x{}, Bottom Center: ({:.0}, {:.0})", 
-                    screen_width, screen_height, window_width, window_height, x, y);
+                info!("📺 Primary Monitor (scale {:.2}): logical size {:.0}x{:.0}, pos ({:.0}, {:.0}) -> Bottom Center: ({:.0}, {:.0})", 
+                    scale, mon_size.width, mon_size.height, mon_pos.x, mon_pos.y, x, y);
                 
                 (x, y)
             }
             _ => {
-                println!("⚠️ Could not get monitor info, using default bottom center position");
+                warn!("⚠️ Could not get monitor info, using default bottom center position");
                 (200.0, 400.0)
             }
         }

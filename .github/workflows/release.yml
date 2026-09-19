@@ -195,9 +195,9 @@ jobs:
             
             assets.forEach(asset => {
               if (asset.name.endsWith('.msi')) {
-                downloadSection += `- **Windows Installer**: [${asset.name}](${asset.browser_download_url}) (${(asset.size / 1024 / 1024).toFixed(1)} MB)\n`;
+                downloadSection += `- **Windows Installer (MSI)**: [${asset.name}](${asset.browser_download_url}) (${(asset.size / 1024 / 1024).toFixed(1)} MB)\n`;
               } else if (asset.name.endsWith('.exe')) {
-                downloadSection += `- **Windows Portable**: [${asset.name}](${asset.browser_download_url}) (${(asset.size / 1024 / 1024).toFixed(1)} MB)\n`;
+                downloadSection += `- **Windows Installer (EXE - Recommended)**: [${asset.name}](${asset.browser_download_url}) (${(asset.size / 1024 / 1024).toFixed(1)} MB)\n`;
               }
             });
 

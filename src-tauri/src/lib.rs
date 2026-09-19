@@ -1026,8 +1026,9 @@ fn debug_test_window(app_handle: tauri::AppHandle) -> Result<(), String> {
 async fn get_primary_monitor_size(app_handle: tauri::AppHandle) -> Result<(u32, u32), String> {
     match app_handle.primary_monitor() {
         Ok(Some(monitor)) => {
-            let size = monitor.size();
-            Ok((size.width, size.height))
+            let scale = monitor.scale_factor();
+            let logical_size = monitor.size().to_logical::<f64>(scale);
+            Ok((logical_size.width.round() as u32, logical_size.height.round() as u32))
         }
         Ok(None) => {
             warn!("No primary monitor found, using default size");

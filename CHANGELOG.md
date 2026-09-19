@@ -5,6 +5,17 @@ All notable changes to Break Reminder Pro will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.1] - 2026-09-20
+
+### Fixed
+
+- **Pre-break and notification positioning across DPI scales** — Window centering and bottom-center calculations (`get_bottom_center_position`, `get_screen_center_position`, and `get_primary_monitor_size`) now use `monitor.scale_factor()` to accurately compute logical coordinates and monitor offsets. This fixes the issue where pre-break warnings appeared off-screen or misplaced on machines with 125%, 150%, or 200% display scaling.
+
+### Changed
+
+- **Seamless Windows installer upgrade experience** — Customized the NSIS installer template to silently terminate background tray instances on launch (eliminating repeated kill-process popups) and automatically execute in-place updates without forcing the user to uninstall the previous version.
+- **Improved release download labeling** — Windows release assets on GitHub are now clearly labeled as "Windows Installer (EXE - Recommended)" and "Windows Installer (MSI)".
+
 ## [1.2.0] - 2026-09-19
 
 ### Added
