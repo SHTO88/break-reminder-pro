@@ -766,120 +766,456 @@ fn play_chime() -> Result<(), String> {
 }
 
 #[tauri::command]
-fn is_meeting_active() -> Result<bool, String> {
-    // Check for desktop meeting applications
-    let meeting_processes = [
-        "zoom.exe",
-        "teams.exe",
-        "skype.exe",
-        "webex.exe",
-        "meet.exe",
-    ];
-
-    let desktop_meeting_found = with_refreshed_processes(|sys| {
-        sys.processes().values().any(|proc| {
-            let name = proc.name().to_lowercase();
-            meeting_processes.iter().any(|mp| name.contains(mp))
-        })
-    });
-
-    if desktop_meeting_found {
-        return Ok(true);
-    }
-
-    // Check for browser-based meetings (Windows only)
+fn is_meeting_active() -> Result<Option<String>, String> {
     #[cfg(target_os = "windows")]
     {
-        if let Ok(browser_meeting_found) = check_browser_meetings() {
-            return Ok(browser_meeting_found);
+        // 1. Hardware check: Is microphone or webcam actively in use by a communication/interview app or browser?
+        match is_hardware_in_use_by_meeting_app() {
+            Ok(Some(info)) => {
+                info!("🔍 Meeting / Interview detected via active hardware: {}", info);
+                return Ok(Some(info));
+            }
+            Ok(None) => {}
+            Err(e) => {
+                warn!("Failed to check hardware usage: {}", e);
+            }
         }
+
+        // 2. Presentation & Full-screen check: Screen-sharing, presentation, or full-screen assessment
+        match is_presentation_or_fullscreen_active() {
+            Ok(Some(info)) => {
+                info!("🔍 Meeting / Interview detected via presentation or full-screen mode: {}", info);
+                return Ok(Some(info));
+            }
+            Ok(None) => {}
+            Err(e) => {
+                warn!("Failed to check presentation/full-screen mode: {}", e);
+            }
+        }
+
+        // 3. Desktop window check: Specific meeting window signatures (Zoom, Teams, Webex)
+        match check_meeting_windows() {
+            Ok(Some(meeting_info)) => {
+                info!("🔍 Meeting detected via active window: {}", meeting_info);
+                return Ok(Some(meeting_info));
+            }
+            Ok(None) => {}
+            Err(e) => {
+                warn!("Failed to check meeting windows: {}", e);
+            }
+        }
+
+        Ok(None)
     }
 
-    Ok(false)
+    #[cfg(not(target_os = "windows"))]
+    {
+        Ok(None)
+    }
 }
 
 #[cfg(target_os = "windows")]
-fn check_browser_meetings() -> Result<bool, String> {
+fn is_hardware_in_use_by_meeting_app() -> Result<Option<String>, String> {
+    use std::ffi::OsString;
+    use std::os::windows::ffi::{OsStrExt, OsStringExt};
+    use winapi::shared::minwindef::{DWORD, HKEY};
+    use winapi::shared::winerror::{ERROR_NO_MORE_ITEMS, ERROR_SUCCESS};
+    use winapi::um::winnt::KEY_READ;
+    use winapi::um::winreg::{
+        HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE, RegCloseKey, RegEnumKeyExW, RegOpenKeyExW, RegQueryValueExW,
+    };
+
+    const SUCCESS: i32 = ERROR_SUCCESS as i32;
+    const NO_MORE_ITEMS: i32 = ERROR_NO_MORE_ITEMS as i32;
+
+    fn to_wide(s: &str) -> Vec<u16> {
+        use std::ffi::OsStr;
+        OsStr::new(s).encode_wide().chain(std::iter::once(0)).collect()
+    }
+
+    let meeting_keywords = [
+        "teams",
+        "zoom",
+        "webex",
+        "skype",
+        "meet",
+        "slack",
+        "discord",
+        "chrome",
+        "msedge",
+        "firefox",
+        "brave",
+        "opera",
+        "vivaldi",
+    ];
+
+    unsafe fn check_consent_store(
+        root_key: HKEY,
+        capability: &str,
+        meeting_keywords: &[&str],
+    ) -> Option<String> {
+        // Check traditional NonPackaged desktop applications
+        let non_packaged_str = format!(
+            r"Software\Microsoft\Windows\CurrentVersion\CapabilityAccessManager\ConsentStore\{}\NonPackaged",
+            capability
+        );
+        let non_packaged_path = to_wide(&non_packaged_str);
+        let mut h_non_packaged: HKEY = std::ptr::null_mut();
+
+        if RegOpenKeyExW(
+            root_key,
+            non_packaged_path.as_ptr(),
+            0,
+            KEY_READ,
+            &mut h_non_packaged,
+        ) == SUCCESS {
+            let mut index = 0;
+            let mut name_buf: [u16; 512] = [0; 512];
+
+            loop {
+                let mut name_len: DWORD = name_buf.len() as DWORD;
+                let status = RegEnumKeyExW(
+                    h_non_packaged,
+                    index,
+                    name_buf.as_mut_ptr(),
+                    &mut name_len,
+                    std::ptr::null_mut(),
+                    std::ptr::null_mut(),
+                    std::ptr::null_mut(),
+                    std::ptr::null_mut(),
+                );
+
+                if status == NO_MORE_ITEMS {
+                    break;
+                }
+                if status != SUCCESS {
+                    index += 1;
+                    continue;
+                }
+
+                let subkey_name = OsString::from_wide(&name_buf[..name_len as usize])
+                    .to_string_lossy()
+                    .to_string();
+                let subkey_lower = subkey_name.to_lowercase();
+
+                if meeting_keywords.iter().any(|k| subkey_lower.contains(k)) {
+                    let subkey_wide = to_wide(&subkey_name);
+                    let mut h_app: HKEY = std::ptr::null_mut();
+                    if RegOpenKeyExW(
+                        h_non_packaged,
+                        subkey_wide.as_ptr(),
+                        0,
+                        KEY_READ,
+                        &mut h_app,
+                    ) == SUCCESS {
+                        let mut stop_time: u64 = 0;
+                        let mut stop_size: DWORD = std::mem::size_of::<u64>() as DWORD;
+                        let mut stop_type: DWORD = 0;
+                        let stop_name = to_wide("LastUsedTimeStop");
+                        let res_stop = RegQueryValueExW(
+                            h_app,
+                            stop_name.as_ptr(),
+                            std::ptr::null_mut(),
+                            &mut stop_type,
+                            &mut stop_time as *mut u64 as *mut u8,
+                            &mut stop_size,
+                        );
+
+                        let mut start_time: u64 = 0;
+                        let mut start_size: DWORD = std::mem::size_of::<u64>() as DWORD;
+                        let mut start_type: DWORD = 0;
+                        let start_name = to_wide("LastUsedTimeStart");
+                        let res_start = RegQueryValueExW(
+                            h_app,
+                            start_name.as_ptr(),
+                            std::ptr::null_mut(),
+                            &mut start_type,
+                            &mut start_time as *mut u64 as *mut u8,
+                            &mut start_size,
+                        );
+
+                        RegCloseKey(h_app);
+
+                        if res_stop == SUCCESS && res_start == SUCCESS {
+                            let is_active = (stop_time == 0 && start_time > 0) || (start_time > stop_time);
+                            if is_active {
+                                let exe_name = subkey_name
+                                    .split('#')
+                                    .last()
+                                    .unwrap_or(&subkey_name)
+                                    .to_string();
+                                let exe_lower = exe_name.to_lowercase();
+
+                                let is_running = with_refreshed_processes(|sys| {
+                                    sys.processes().values().any(|p| {
+                                        let p_name = p.name().to_lowercase();
+                                        p_name == exe_lower
+                                            || exe_lower.starts_with(&p_name)
+                                            || p_name.starts_with(&exe_lower)
+                                    })
+                                });
+
+                                if is_running {
+                                    RegCloseKey(h_non_packaged);
+                                    let device_label = if capability == "webcam" { "Webcam" } else { "Microphone" };
+                                    return Some(format!("{} active by: {}", device_label, exe_name));
+                                }
+                            }
+                        }
+                    }
+                }
+
+                index += 1;
+            }
+            RegCloseKey(h_non_packaged);
+        }
+
+        // Check Packaged apps directly under ConsentStore\<capability>
+        let packaged_str = format!(
+            r"Software\Microsoft\Windows\CurrentVersion\CapabilityAccessManager\ConsentStore\{}",
+            capability
+        );
+        let packaged_path = to_wide(&packaged_str);
+        let mut h_packaged: HKEY = std::ptr::null_mut();
+
+        if RegOpenKeyExW(
+            root_key,
+            packaged_path.as_ptr(),
+            0,
+            KEY_READ,
+            &mut h_packaged,
+        ) == SUCCESS {
+            let mut index = 0;
+            let mut name_buf: [u16; 512] = [0; 512];
+
+            loop {
+                let mut name_len: DWORD = name_buf.len() as DWORD;
+                let status = RegEnumKeyExW(
+                    h_packaged,
+                    index,
+                    name_buf.as_mut_ptr(),
+                    &mut name_len,
+                    std::ptr::null_mut(),
+                    std::ptr::null_mut(),
+                    std::ptr::null_mut(),
+                    std::ptr::null_mut(),
+                );
+
+                if status == NO_MORE_ITEMS {
+                    break;
+                }
+                if status != SUCCESS {
+                    index += 1;
+                    continue;
+                }
+
+                let subkey_name = OsString::from_wide(&name_buf[..name_len as usize])
+                    .to_string_lossy()
+                    .to_string();
+                let subkey_lower = subkey_name.to_lowercase();
+
+                if subkey_lower != "nonpackaged"
+                    && meeting_keywords.iter().any(|k| subkey_lower.contains(k))
+                {
+                    let subkey_wide = to_wide(&subkey_name);
+                    let mut h_app: HKEY = std::ptr::null_mut();
+                    if RegOpenKeyExW(
+                        h_packaged,
+                        subkey_wide.as_ptr(),
+                        0,
+                        KEY_READ,
+                        &mut h_app,
+                    ) == SUCCESS {
+                        let mut stop_time: u64 = 0;
+                        let mut stop_size: DWORD = std::mem::size_of::<u64>() as DWORD;
+                        let mut stop_type: DWORD = 0;
+                        let stop_name = to_wide("LastUsedTimeStop");
+                        let res_stop = RegQueryValueExW(
+                            h_app,
+                            stop_name.as_ptr(),
+                            std::ptr::null_mut(),
+                            &mut stop_type,
+                            &mut stop_time as *mut u64 as *mut u8,
+                            &mut stop_size,
+                        );
+
+                        let mut start_time: u64 = 0;
+                        let mut start_size: DWORD = std::mem::size_of::<u64>() as DWORD;
+                        let mut start_type: DWORD = 0;
+                        let start_name = to_wide("LastUsedTimeStart");
+                        let res_start = RegQueryValueExW(
+                            h_app,
+                            start_name.as_ptr(),
+                            std::ptr::null_mut(),
+                            &mut start_type,
+                            &mut start_time as *mut u64 as *mut u8,
+                            &mut start_size,
+                        );
+
+                        RegCloseKey(h_app);
+
+                        if res_stop == SUCCESS && res_start == SUCCESS {
+                            let is_active = (stop_time == 0 && start_time > 0) || (start_time > stop_time);
+                            if is_active {
+                                let is_running = with_refreshed_processes(|sys| {
+                                    sys.processes().values().any(|p| {
+                                        let pname = p.name().to_lowercase();
+                                        meeting_keywords.iter().any(|k| {
+                                            subkey_lower.contains(k) && pname.contains(k)
+                                        })
+                                    })
+                                });
+
+                                if is_running {
+                                    RegCloseKey(h_packaged);
+                                    let device_label = if capability == "webcam" { "Webcam" } else { "Microphone" };
+                                    return Some(format!("{} active by: {}", device_label, subkey_name));
+                                }
+                            }
+                        }
+                    }
+                }
+
+                index += 1;
+            }
+            RegCloseKey(h_packaged);
+        }
+
+        None
+    }
+
+    unsafe {
+        for capability in &["microphone", "webcam"] {
+            if let Some(app) = check_consent_store(HKEY_CURRENT_USER, capability, &meeting_keywords) {
+                return Ok(Some(app));
+            }
+            if let Some(app) = check_consent_store(HKEY_LOCAL_MACHINE, capability, &meeting_keywords) {
+                return Ok(Some(app));
+            }
+        }
+    }
+
+    Ok(None)
+}
+
+#[allow(dead_code)]
+#[cfg(target_os = "windows")]
+fn is_microphone_in_use_by_meeting_app() -> Result<Option<String>, String> {
+    is_hardware_in_use_by_meeting_app()
+}
+
+#[cfg(target_os = "windows")]
+fn is_presentation_or_fullscreen_active() -> Result<Option<String>, String> {
+    use windows::Win32::UI::Shell::{
+        SHQueryUserNotificationState,
+        QUNS_BUSY,
+        QUNS_PRESENTATION_MODE,
+        QUNS_RUNNING_D3D_FULL_SCREEN,
+    };
+    use winapi::um::winuser::{GetForegroundWindow, GetWindowRect, GetDesktopWindow};
+    use winapi::shared::windef::RECT;
+
+    let res = unsafe { SHQueryUserNotificationState() };
+    if let Ok(state) = res {
+        if state == QUNS_PRESENTATION_MODE {
+            return Ok(Some("Presentation / Screen Share Mode".to_string()));
+        }
+        if state == QUNS_RUNNING_D3D_FULL_SCREEN {
+            return Ok(Some("Full-screen 3D Application".to_string()));
+        }
+        if state == QUNS_BUSY {
+            // Check if there is an actual foreground window that covers the entire desktop
+            unsafe {
+                let fg_hwnd = GetForegroundWindow();
+                if !fg_hwnd.is_null() {
+                    let mut fg_rect: RECT = std::mem::zeroed();
+                    let mut desk_rect: RECT = std::mem::zeroed();
+                    GetWindowRect(fg_hwnd, &mut fg_rect);
+                    GetWindowRect(GetDesktopWindow(), &mut desk_rect);
+
+                    if fg_rect.left <= desk_rect.left
+                        && fg_rect.top <= desk_rect.top
+                        && fg_rect.right >= desk_rect.right
+                        && fg_rect.bottom >= desk_rect.bottom
+                    {
+                        return Ok(Some("Full-screen Exclusive Application".to_string()));
+                    }
+                }
+            }
+        }
+    }
+
+    Ok(None)
+}
+
+#[cfg(target_os = "windows")]
+fn check_meeting_windows() -> Result<Option<String>, String> {
     use std::ffi::OsString;
     use std::os::windows::ffi::OsStringExt;
     use winapi::shared::minwindef::{BOOL, FALSE, LPARAM, TRUE};
     use winapi::shared::windef::HWND;
-    use winapi::um::winuser::{EnumWindows, GetWindowTextW, IsWindowVisible};
+    use winapi::um::winuser::{EnumWindows, GetWindowTextW, GetWindowThreadProcessId, IsWindowVisible};
 
-    // Meeting indicators to look for in browser window titles
-    let meeting_indicators = [
-        "google meet",
-        "meet.google.com",
-        "zoom meeting",
-        "microsoft teams",
-        "teams.microsoft.com",
-        "webex meeting",
-        "webex.com",
-        "gotomeeting",
-        "join.me",
-        "bluejeans",
-        "whereby.com",
-        "discord",
-        "slack call",
-        "skype",
-        "hangouts",
-        "jitsi meet",
-        "bigbluebutton",
-        "8x8.vc",
-        "ringcentral meetings",
-        "cisco webex",
-        "amazon chime",
-        "facebook messenger rooms",
-        "whatsapp web",
-    ];
+    // Note: Browser-based meetings (Google Meet, Teams web, etc.) are detected via active
+    // microphone sessions in `is_microphone_in_use_by_meeting_app()`. Browsers keep tabs open
+    // after a meeting ends (showing "You left the call"), so inspecting browser window titles
+    // alone causes persistent false positives. Only check dedicated desktop meeting apps here.
+    let (teams_pids, zoom_pids, webex_pids) = with_refreshed_processes(|sys| {
+        let mut teams = Vec::new();
+        let mut zoom = Vec::new();
+        let mut webex = Vec::new();
 
-    // Browser process names to check
-    let browser_processes = [
-        "chrome.exe",
-        "firefox.exe",
-        "msedge.exe",
-        "opera.exe",
-        "brave.exe",
-        "vivaldi.exe",
-        "iexplore.exe",
-    ];
-
-    // First check if any browsers are running
-    let browser_running = with_refreshed_processes(|sys| {
-        sys.processes().values().any(|proc| {
+        for (pid, proc) in sys.processes() {
             let name = proc.name().to_lowercase();
-            browser_processes.iter().any(|bp| name.contains(bp))
-        })
+            let pid_u32 = pid.as_u32();
+            if name.contains("teams.exe") || name.contains("ms-teams.exe") {
+                teams.push(pid_u32);
+            } else if name.contains("zoom.exe") {
+                zoom.push(pid_u32);
+            } else if name.contains("webex.exe") || name.contains("ciscowebexstart.exe") || name.contains("atmgr.exe") {
+                webex.push(pid_u32);
+            }
+        }
+
+        (teams, zoom, webex)
     });
 
-    if !browser_running {
-        return Ok(false);
+    if teams_pids.is_empty() && zoom_pids.is_empty() && webex_pids.is_empty() {
+        return Ok(None);
     }
 
-    // Structure to pass data to the callback
     struct CallbackData {
-        meeting_indicators: Vec<String>,
-        found_meeting: bool,
+        teams_pids: Vec<u32>,
+        zoom_pids: Vec<u32>,
+        webex_pids: Vec<u32>,
+        detected_meeting: Option<String>,
     }
 
     let mut callback_data = CallbackData {
-        meeting_indicators: meeting_indicators
-            .iter()
-            .map(|s| s.to_lowercase())
-            .collect(),
-        found_meeting: false,
+        teams_pids,
+        zoom_pids,
+        webex_pids,
+        detected_meeting: None,
     };
 
-    // Callback function for EnumWindows
     unsafe extern "system" fn enum_windows_proc(hwnd: HWND, lparam: LPARAM) -> BOOL {
         let callback_data = &mut *(lparam as *mut CallbackData);
 
-        // Only check visible windows
         if IsWindowVisible(hwnd) == 0 {
             return TRUE;
         }
 
-        // Get window title
+        let mut pid: u32 = 0;
+        GetWindowThreadProcessId(hwnd, &mut pid);
+
+        let is_teams = callback_data.teams_pids.contains(&pid);
+        let is_zoom = callback_data.zoom_pids.contains(&pid);
+        let is_webex = callback_data.webex_pids.contains(&pid);
+
+        if !is_teams && !is_zoom && !is_webex {
+            return TRUE;
+        }
+
         let mut title: [u16; 512] = [0; 512];
         let title_len = GetWindowTextW(hwnd, title.as_mut_ptr(), title.len() as i32);
 
@@ -888,21 +1224,51 @@ fn check_browser_meetings() -> Result<bool, String> {
             if let Ok(title_string) = title_os_string.into_string() {
                 let title_lower = title_string.to_lowercase();
 
-                // Check if the window title contains any meeting indicators
-                for indicator in &callback_data.meeting_indicators {
-                    if title_lower.contains(indicator) {
-                        info!("🔍 Meeting detected in browser window: {}", title_string);
-                        callback_data.found_meeting = true;
-                        return FALSE; // Stop enumeration
+                // 1. Zoom active meeting window (dedicated window destroyed when meeting ends)
+                if is_zoom {
+                    if title_lower.contains("zoom meeting") || title_lower.contains("zoom webinar") {
+                        info!("🔍 Zoom meeting window detected: {}", title_string);
+                        callback_data.detected_meeting = Some(format!("Zoom Meeting: {}", title_string));
+                        return FALSE;
+                    }
+                }
+
+                // 2. Teams active call/meeting window (dedicated pop-out destroyed when call ends)
+                if is_teams {
+                    let is_meeting_window = title_lower.contains("(meeting)")
+                        || title_lower.contains("meeting |")
+                        || title_lower.contains("meeting with ")
+                        || title_lower.contains("call with ")
+                        || title_lower.contains("screen sharing")
+                        || (title_lower.ends_with(" | microsoft teams")
+                            && !title_lower.starts_with("chat |")
+                            && !title_lower.starts_with("activity |")
+                            && !title_lower.starts_with("calendar |")
+                            && !title_lower.starts_with("teams |")
+                            && !title_lower.starts_with("files |")
+                            && title_lower != "microsoft teams");
+
+                    if is_meeting_window {
+                        info!("🔍 Teams meeting window detected: {}", title_string);
+                        callback_data.detected_meeting = Some(format!("Teams Meeting: {}", title_string));
+                        return FALSE;
+                    }
+                }
+
+                // 3. Webex active meeting window (dedicated window destroyed when meeting ends)
+                if is_webex {
+                    if title_lower.contains("webex meeting") || title_lower.contains("cisco webex") {
+                        info!("🔍 Webex meeting window detected: {}", title_string);
+                        callback_data.detected_meeting = Some(format!("Webex Meeting: {}", title_string));
+                        return FALSE;
                     }
                 }
             }
         }
 
-        TRUE // Continue enumeration
+        TRUE
     }
 
-    // Enumerate all windows
     unsafe {
         EnumWindows(
             Some(enum_windows_proc),
@@ -910,28 +1276,74 @@ fn check_browser_meetings() -> Result<bool, String> {
         );
     }
 
-    Ok(callback_data.found_meeting)
+    Ok(callback_data.detected_meeting)
+}
+
+#[allow(dead_code)]
+#[cfg(target_os = "windows")]
+fn check_browser_meetings() -> Result<bool, String> {
+    match check_meeting_windows() {
+        Ok(Some(_)) => Ok(true),
+        Ok(None) => Ok(false),
+        Err(e) => Err(e),
+    }
 }
 
 #[tauri::command]
 fn check_browser_meeting_debug() -> Result<String, String> {
     #[cfg(target_os = "windows")]
     {
-        match check_browser_meetings() {
-            Ok(found) => {
-                if found {
-                    Ok("Browser meeting detected".to_string())
-                } else {
-                    Ok("No browser meeting detected".to_string())
-                }
+        let mut debug_info = Vec::new();
+
+        match is_hardware_in_use_by_meeting_app() {
+            Ok(Some(app_name)) => {
+                debug_info.push(app_name);
             }
-            Err(e) => Ok(format!("Error checking browser meetings: {}", e)),
+            Ok(None) => {
+                debug_info.push("Hardware: Idle (mic & webcam not in use by meeting/browser apps)".to_string());
+            }
+            Err(e) => {
+                debug_info.push(format!("Hardware check error: {}", e));
+            }
         }
+
+        match is_presentation_or_fullscreen_active() {
+            Ok(Some(info)) => {
+                debug_info.push(format!("Display mode: {}", info));
+            }
+            Ok(None) => {
+                debug_info.push("Display mode: Normal (not in presentation/full-screen)".to_string());
+            }
+            Err(e) => {
+                debug_info.push(format!("Display mode error: {}", e));
+            }
+        }
+
+        match check_meeting_windows() {
+            Ok(Some(meeting_info)) => {
+                debug_info.push(format!("Meeting window detected: {}", meeting_info));
+            }
+            Ok(None) => {
+                debug_info.push("Meeting windows: None detected".to_string());
+            }
+            Err(e) => {
+                debug_info.push(format!("Window check error: {}", e));
+            }
+        }
+
+        let in_meeting = match is_meeting_active() {
+            Ok(Some(reason)) => format!("Overall meeting status: ACTIVE ({})", reason),
+            Ok(None) => "Overall meeting status: NOT ACTIVE".to_string(),
+            Err(e) => format!("Overall meeting error: {}", e),
+        };
+        debug_info.push(in_meeting);
+
+        Ok(debug_info.join(" | "))
     }
 
     #[cfg(not(target_os = "windows"))]
     {
-        Ok("Browser meeting detection only supported on Windows".to_string())
+        Ok("Meeting detection is only supported on Windows".to_string())
     }
 }
 
@@ -1042,11 +1454,11 @@ async fn get_primary_monitor_size(app_handle: tauri::AppHandle) -> Result<(u32, 
 }
 
 #[tauri::command]
-fn meeting_detected_notification(app_handle: tauri::AppHandle) -> Result<(), String> {
-    info!("🤝 Creating meeting detected notification window...");
+fn meeting_detected_notification(app_handle: tauri::AppHandle, reason: Option<String>) -> Result<(), String> {
+    info!("🤝 Creating meeting detected notification window (reason: {:?})...", reason);
 
     WindowManager::close_existing_window(&app_handle, "meeting_notification");
-    let config = WindowConfig::meeting_notification(&app_handle);
+    let config = WindowConfig::meeting_notification(&app_handle, reason);
     WindowManager::create_window(app_handle, config)
 }
 
@@ -1282,4 +1694,47 @@ pub fn run() {
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    #[cfg(target_os = "windows")]
+    fn test_hardware_meeting_detection_runs() {
+        let result = is_hardware_in_use_by_meeting_app();
+        assert!(result.is_ok(), "is_hardware_in_use_by_meeting_app should not error");
+        println!("Hardware (mic/webcam) meeting app result: {:?}", result.unwrap());
+    }
+
+    #[test]
+    #[cfg(target_os = "windows")]
+    fn test_presentation_or_fullscreen_detection_runs() {
+        let result = is_presentation_or_fullscreen_active();
+        assert!(result.is_ok(), "is_presentation_or_fullscreen_active should not error");
+        println!("Presentation/fullscreen result: {:?}", result.unwrap());
+    }
+
+    #[test]
+    #[cfg(target_os = "windows")]
+    fn test_meeting_windows_detection_runs() {
+        let result = check_meeting_windows();
+        assert!(result.is_ok(), "check_meeting_windows should not error");
+        println!("Meeting windows result: {:?}", result.unwrap());
+    }
+
+    #[test]
+    fn test_is_meeting_active_runs() {
+        let result = is_meeting_active();
+        assert!(result.is_ok(), "is_meeting_active should not error");
+        println!("is_meeting_active result: {:?}", result.unwrap());
+    }
+
+    #[test]
+    fn test_check_browser_meeting_debug_runs() {
+        let result = check_browser_meeting_debug();
+        assert!(result.is_ok(), "check_browser_meeting_debug should not error");
+        println!("check_browser_meeting_debug output: {:?}", result.unwrap());
+    }
 }

@@ -1,6 +1,6 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
+  <head>
     <meta charset="UTF-8" />
     <title>Meeting Detected</title>
     <style>
@@ -26,7 +26,7 @@
         box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
         border: 1px solid rgba(255, 255, 255, 0.1);
         width: calc(100% - 8px);
-        max-width: 220px;
+        max-width: 250px;
         position: relative;
         box-sizing: border-box;
       }
@@ -62,6 +62,17 @@
         opacity: 0.8;
         line-height: 1.2;
       }
+      .meeting-reason {
+        font-size: 9px;
+        font-weight: 500;
+        opacity: 0.85;
+        margin-top: 3px;
+        color: #e0e7ff;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        max-width: 175px;
+      }
       .countdown-display {
         font-size: 10px;
         opacity: 0.7;
@@ -87,8 +98,8 @@
         opacity: 1;
       }
     </style>
-</head>
-<body>
+  </head>
+  <body>
     <div class="meeting-notification" id="meeting-container">
       <div class="app-name">Break Reminder Pro</div>
       <div class="main-content">
@@ -96,6 +107,11 @@
         <div class="meeting-info">
           <div class="meeting-title">Meeting Detected</div>
           <div class="meeting-message">Break postponed by 10 min</div>
+          <div
+            class="meeting-reason"
+            id="meeting-reason"
+            style="display: none"
+          ></div>
         </div>
         <div class="countdown-display" id="countdown-display">4s</div>
       </div>
@@ -103,103 +119,128 @@
     </div>
 
     <script type="module">
-      import { WindowUtils, WindowPositionManager, AutoHideManager } from './shared/window-utils.js';
-      import { UIUtils } from './shared/ui-utils.js';
+      import {
+        WindowUtils,
+        WindowPositionManager,
+        AutoHideManager,
+      } from "./shared/window-utils.js";
+      import { UIUtils } from "./shared/ui-utils.js";
 
-      console.log('🤝 Meeting notification window loaded successfully!');
-      document.title = 'Meeting Detected - LOADED';
-      
+      console.log("🤝 Meeting notification window loaded successfully!");
+      document.title = "Meeting Detected - LOADED";
+
+      // Display detected meeting reason if provided
+      try {
+        const urlParams = new URLSearchParams(window.location.search);
+        const reason = urlParams.get("reason");
+        if (reason) {
+          const reasonEl = document.getElementById("meeting-reason");
+          if (reasonEl) {
+            reasonEl.textContent = reason;
+            reasonEl.title = reason;
+            reasonEl.style.display = "block";
+          }
+        }
+      } catch (err) {
+        console.error("Error reading meeting reason:", err);
+      }
+
       let autoHideManager = null;
-      
+
       // Close window function
       async function closeWindow() {
-        await WindowUtils.closeWindow('meeting_notification');
+        await WindowUtils.closeWindow("meeting_notification");
       }
-      
+
       // Position management using WindowPositionManager
-      const positionManager = new WindowPositionManager('meetingNotification');
-      
+      const positionManager = new WindowPositionManager("meetingNotification");
+
       async function loadPosition() {
         await positionManager.positionWindow(async () => {
           // Custom positioning for meeting notification (above pre-break position)
           const screen = await WindowUtils.getScreenDimensions();
           const size = await WindowUtils.getWindowSize();
-          
+
           const x = Math.floor((screen.width - size.width) / 2);
           const y = screen.height - size.height - 250; // 250px from bottom
-          
-          console.log(`🎯 Positioning meeting notification at BOTTOM CENTER: (${x}, ${y})`);
+
+          console.log(
+            `🎯 Positioning meeting notification at BOTTOM CENTER: (${x}, ${y})`,
+          );
           await WindowUtils.positionWindow(x, y);
           await WindowUtils.showAndFocus();
           await WindowUtils.setAlwaysOnTop(true);
         });
       }
-      
+
       // Auto-close functionality using AutoHideManager
       function initAutoClose() {
         autoHideManager = new AutoHideManager(4000, () => {
-          const container = document.getElementById('meeting-container');
-          container.classList.add('fade-out');
+          const container = document.getElementById("meeting-container");
+          container.classList.add("fade-out");
           setTimeout(() => closeWindow(), 500);
         });
-        
-        autoHideManager.setProgressElement(document.getElementById('auto-close-progress'));
-        
+
+        autoHideManager.setProgressElement(
+          document.getElementById("auto-close-progress"),
+        );
+
         // Custom progress update to show countdown
         const originalStart = autoHideManager.start.bind(autoHideManager);
-        autoHideManager.start = function() {
+        autoHideManager.start = function () {
           originalStart();
-          
+
           // Update countdown display
           const updateCountdown = setInterval(() => {
             if (this.isPaused) return;
-            
+
             const elapsed = Date.now() - this.startTime;
             const remaining = Math.ceil((this.duration - elapsed) / 1000);
-            const countdownDisplay = document.getElementById('countdown-display');
+            const countdownDisplay =
+              document.getElementById("countdown-display");
             if (countdownDisplay && remaining > 0) {
-              countdownDisplay.textContent = remaining + 's';
+              countdownDisplay.textContent = remaining + "s";
             }
-            
+
             if (remaining <= 0) {
               clearInterval(updateCountdown);
             }
           }, 100);
         };
       }
-      
+
       // Dragging functionality
       function initDragging() {
-        const container = document.getElementById('meeting-container');
+        const container = document.getElementById("meeting-container");
         UIUtils.setupDragFunctionality(container);
       }
-      
+
       // Keyboard shortcuts
-      document.addEventListener('keydown', (e) => {
-        if (e.key === 'Escape') {
+      document.addEventListener("keydown", (e) => {
+        if (e.key === "Escape") {
           closeWindow();
         }
       });
-      
+
       // Initialize everything
       try {
         // Wait for Rust positioning to complete, then initialize
         setTimeout(() => {
           loadPosition();
         }, 300);
-        
+
         // Initialize other features
         setTimeout(() => {
           initDragging();
           initAutoClose();
           if (autoHideManager) autoHideManager.start();
         }, 400);
-        
-        console.log('Meeting notification initialized successfully');
+
+        console.log("Meeting notification initialized successfully");
       } catch (error) {
-        console.error('Error in meeting notification:', error);
+        console.error("Error in meeting notification:", error);
         document.body.innerHTML = `<div style="color: red; padding: 20px;">Error: ${error.message}</div>`;
       }
     </script>
-</body>
+  </body>
 </html>

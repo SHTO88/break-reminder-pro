@@ -331,14 +331,21 @@ impl WindowConfig {
         }
     }
 
-    pub fn meeting_notification(app_handle: &AppHandle) -> Self {
-        let window_width = 240.0;
-        let window_height = 90.0;
+    pub fn meeting_notification(app_handle: &AppHandle, reason: Option<String>) -> Self {
+        let window_width = 260.0;
+        let window_height = 96.0;
         let position = WindowManager::get_bottom_center_position(app_handle, window_width, window_height, 220.0);
         
+        let url = match reason {
+            Some(ref r) if !r.is_empty() => {
+                format!("meeting_notification.html?reason={}", urlencoding::encode(r))
+            }
+            _ => "meeting_notification.html".to_string(),
+        };
+
         Self {
             label: "meeting_notification".to_string(),
-            url: "meeting_notification.html".to_string(),
+            url,
             title: "Meeting Detected".to_string(),
             width: window_width,
             height: window_height,

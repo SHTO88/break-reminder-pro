@@ -12,7 +12,7 @@ export class DebugUtils {
   /**
    * Log debug message with timestamp
    */
-  static log(message, outputElementId = 'debug-output') {
+  static log(message, outputElementId = "debug-output") {
     console.log(`[DEBUG] ${message}`);
 
     const output = document.getElementById(outputElementId);
@@ -26,12 +26,12 @@ export class DebugUtils {
   /**
    * Clear debug output
    */
-  static clear(outputElementId = 'debug-output') {
+  static clear(outputElementId = "debug-output") {
     const output = document.getElementById(outputElementId);
     if (output) {
-      output.textContent = 'Debug output cleared...\n';
+      output.textContent = "Debug output cleared...\n";
     }
-    this.log('Debug console cleared');
+    this.log("Debug console cleared");
   }
 
   /**
@@ -39,7 +39,7 @@ export class DebugUtils {
    */
   static async testForceBreak(duration = 300) {
     try {
-      this.log('Triggering force break window...');
+      this.log("Triggering force break window...");
       await invoke("force_break_window", { duration });
       this.log(`✅ Force break window created with ${duration}s duration`);
     } catch (error) {
@@ -49,9 +49,9 @@ export class DebugUtils {
 
   static async testPreBreak() {
     try {
-      this.log('Triggering pre-break notification...');
+      this.log("Triggering pre-break notification...");
       await invoke("pre_break_notification_window", { remainingSeconds: 30 });
-      this.log('✅ Pre-break notification window created');
+      this.log("✅ Pre-break notification window created");
     } catch (error) {
       this.log(`❌ Error triggering pre-break: ${error}`);
     }
@@ -59,7 +59,7 @@ export class DebugUtils {
 
   static async testNotify(duration = 600) {
     try {
-      this.log('Triggering notify window...');
+      this.log("Triggering notify window...");
       await invoke("notify_window", { duration });
       this.log(`✅ Notify window created with ${duration}s duration`);
     } catch (error) {
@@ -69,9 +69,9 @@ export class DebugUtils {
 
   static async testLockScreen() {
     try {
-      this.log('Triggering screen lock...');
+      this.log("Triggering screen lock...");
       await invoke("lock_screen");
-      this.log('✅ Screen lock triggered');
+      this.log("✅ Screen lock triggered");
     } catch (error) {
       this.log(`❌ Error locking screen: ${error}`);
     }
@@ -82,9 +82,9 @@ export class DebugUtils {
    */
   static async testPlayChime() {
     try {
-      this.log('Testing chime sound...');
+      this.log("Testing chime sound...");
       await invoke("play_chime");
-      this.log('✅ Chime played successfully');
+      this.log("✅ Chime played successfully");
     } catch (error) {
       this.log(`❌ Error playing chime: ${error}`);
     }
@@ -92,9 +92,9 @@ export class DebugUtils {
 
   static async testMediaPause() {
     try {
-      this.log('Testing media pause...');
+      this.log("Testing media pause...");
       await invoke("control_media", { action: "pause" });
-      this.log('✅ Media pause command sent');
+      this.log("✅ Media pause command sent");
     } catch (error) {
       this.log(`❌ Error pausing media: ${error}`);
     }
@@ -102,9 +102,11 @@ export class DebugUtils {
 
   static async testMeetingCheck() {
     try {
-      this.log('Checking meeting status...');
-      const inMeeting = await invoke("is_meeting_active");
-      this.log(`Meeting detection result: ${inMeeting ? 'In meeting' : 'No meeting detected'}`);
+      this.log("Checking meeting status...");
+      const meetingReason = await invoke("is_meeting_active");
+      this.log(
+        `Meeting detection result: ${meetingReason ? `In meeting (${meetingReason})` : "No meeting detected"}`,
+      );
     } catch (error) {
       this.log(`❌ Error checking meeting status: ${error}`);
     }
@@ -112,7 +114,7 @@ export class DebugUtils {
 
   static async testBrowserMeetingCheck() {
     try {
-      this.log('Checking browser meeting status...');
+      this.log("Checking browser meeting status...");
       const result = await invoke("check_browser_meeting_debug");
       this.log(`Browser meeting detection: ${result}`);
     } catch (error) {
@@ -122,9 +124,11 @@ export class DebugUtils {
 
   static async testMeetingNotification() {
     try {
-      this.log('Testing meeting detected notification...');
-      await invoke("meeting_detected_notification");
-      this.log('✅ Meeting notification window created successfully');
+      this.log("Testing meeting detected notification...");
+      await invoke("meeting_detected_notification", {
+        reason: "Debug Test (Microphone active by: msedge.exe)",
+      });
+      this.log("✅ Meeting notification window created successfully");
     } catch (error) {
       this.log(`❌ Error showing meeting notification: ${error}`);
     }
@@ -132,9 +136,9 @@ export class DebugUtils {
 
   static async testAutostartCheck() {
     try {
-      this.log('Checking autostart status...');
+      this.log("Checking autostart status...");
       const isEnabled = await invoke("is_autostart_enabled");
-      this.log(`Autostart status: ${isEnabled ? 'Enabled' : 'Disabled'}`);
+      this.log(`Autostart status: ${isEnabled ? "Enabled" : "Disabled"}`);
     } catch (error) {
       this.log(`❌ Error checking autostart: ${error}`);
     }
@@ -142,33 +146,33 @@ export class DebugUtils {
 
   static async testUpdateCheck() {
     try {
-      this.log('Opening update notification with mock data...');
-      await invoke('show_update_notification', {
-        version: 'v0.0.0-TEST',
+      this.log("Opening update notification with mock data...");
+      await invoke("show_update_notification", {
+        version: "v0.0.0-TEST",
         notes: [
-          '## What\'s New',
-          '',
-          '### ✨ New Features',
-          '- Added smart break scheduling based on activity detection',
-          '- New **Focus Mode** that blocks distracting apps during breaks',
-          '- Pre-break warning now supports custom messages',
-          '',
-          '### 🐛 Bug Fixes',
-          '- Fixed crash on break end when media player was running',
-          '- Resolved 00:00 freeze caused by blocking `play_chime` call',
-          '- Fixed nested scrollbar in update notification window',
-          '',
-          '### ⚡ Performance',
-          '- Reduced startup time by ~40%',
-          '- Media control now non-blocking for instant break close',
-          '',
-          '---',
-          '_Thank you for using Break Reminder Pro!_',
-        ].join('\n'),
-        downloadUrl: 'https://github.com',
+          "## What's New",
+          "",
+          "### ✨ New Features",
+          "- Added smart break scheduling based on activity detection",
+          "- New **Focus Mode** that blocks distracting apps during breaks",
+          "- Pre-break warning now supports custom messages",
+          "",
+          "### 🐛 Bug Fixes",
+          "- Fixed crash on break end when media player was running",
+          "- Resolved 00:00 freeze caused by blocking `play_chime` call",
+          "- Fixed nested scrollbar in update notification window",
+          "",
+          "### ⚡ Performance",
+          "- Reduced startup time by ~40%",
+          "- Media control now non-blocking for instant break close",
+          "",
+          "---",
+          "_Thank you for using Break Reminder Pro!_",
+        ].join("\n"),
+        downloadUrl: "https://github.com",
         publishedAt: new Date().toISOString(),
       });
-      this.log('✅ Update notification window opened');
+      this.log("✅ Update notification window opened");
     } catch (error) {
       this.log(`❌ Error showing update notification: ${error}`);
     }
@@ -192,13 +196,17 @@ export class DebugUtils {
    */
   static async clearSettings(defaultSettings) {
     try {
-      this.log('Clearing all settings...');
-      if (confirm('Are you sure you want to clear all settings? This cannot be undone.')) {
-        await invoke('save_settings', { settings: defaultSettings });
-        this.log('✅ Settings cleared and reset to defaults');
+      this.log("Clearing all settings...");
+      if (
+        confirm(
+          "Are you sure you want to clear all settings? This cannot be undone.",
+        )
+      ) {
+        await invoke("save_settings", { settings: defaultSettings });
+        this.log("✅ Settings cleared and reset to defaults");
         return true;
       } else {
-        this.log('Settings clear cancelled by user');
+        this.log("Settings clear cancelled by user");
         return false;
       }
     } catch (error) {
@@ -212,25 +220,24 @@ export class DebugUtils {
    */
   static async runTestSequence() {
     try {
-      this.log('=== STARTING FULL TEST SEQUENCE ===');
+      this.log("=== STARTING FULL TEST SEQUENCE ===");
 
-      this.log('1. Testing system features...');
+      this.log("1. Testing system features...");
       await this.testMeetingCheck();
       await this.testBrowserMeetingCheck();
       await this.testAutostartCheck();
       await this.testMediaPause();
 
-      this.log('2. Testing notification windows...');
+      this.log("2. Testing notification windows...");
       await this.testPreBreak();
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      await this.closeWindow('pre_break');
+      await new Promise((resolve) => setTimeout(resolve, 2000));
+      await this.closeWindow("pre_break");
 
       await this.testNotify();
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      await this.closeWindow('notify');
+      await new Promise((resolve) => setTimeout(resolve, 2000));
+      await this.closeWindow("notify");
 
-      this.log('=== FULL TEST SEQUENCE COMPLETED ===');
-
+      this.log("=== FULL TEST SEQUENCE COMPLETED ===");
     } catch (error) {
       this.log(`❌ Error in test sequence: ${error}`);
     }
@@ -240,27 +247,27 @@ export class DebugUtils {
    * Show debug help
    */
   static showHelp() {
-    this.log('=== BREAK REMINDER PRO DEBUG HELP ===');
-    this.log('');
-    this.log('BREAK TESTING:');
-    this.log('  🖥️ Force Break - Opens fullscreen break window');
-    this.log('  ⏰ Pre-Break - Shows pre-break warning notification');
-    this.log('  🔔 Notify - Opens break notification window');
-    this.log('  🔒 Lock Screen - Locks the computer screen');
-    this.log('');
-    this.log('SYSTEM TESTS:');
-    this.log('  🔔 Play Chime - Tests break notification sound');
-    this.log('  ⏸️ Media Pause - Tests media control functionality');
-    this.log('  👥 Meeting Check - Tests desktop meeting detection');
-    this.log('  🌐 Browser Meeting - Tests browser meeting detection');
-    this.log('  🚀 Autostart - Tests Windows autostart status');
-    this.log('  🆕 Update Notification - Opens update window with mock data');
-    this.log('  🗑️ Clear Settings - Resets all settings to defaults');
-    this.log('');
-    this.log('WINDOW CONTROLS:');
-    this.log('  ❌ Close windows - Closes specific break windows');
-    this.log('  🧪 Full Test - Runs comprehensive test sequence');
-    this.log('=====================================');
+    this.log("=== BREAK REMINDER PRO DEBUG HELP ===");
+    this.log("");
+    this.log("BREAK TESTING:");
+    this.log("  🖥️ Force Break - Opens fullscreen break window");
+    this.log("  ⏰ Pre-Break - Shows pre-break warning notification");
+    this.log("  🔔 Notify - Opens break notification window");
+    this.log("  🔒 Lock Screen - Locks the computer screen");
+    this.log("");
+    this.log("SYSTEM TESTS:");
+    this.log("  🔔 Play Chime - Tests break notification sound");
+    this.log("  ⏸️ Media Pause - Tests media control functionality");
+    this.log("  👥 Meeting Check - Tests desktop meeting detection");
+    this.log("  🌐 Browser Meeting - Tests browser meeting detection");
+    this.log("  🚀 Autostart - Tests Windows autostart status");
+    this.log("  🆕 Update Notification - Opens update window with mock data");
+    this.log("  🗑️ Clear Settings - Resets all settings to defaults");
+    this.log("");
+    this.log("WINDOW CONTROLS:");
+    this.log("  ❌ Close windows - Closes specific break windows");
+    this.log("  🧪 Full Test - Runs comprehensive test sequence");
+    this.log("=====================================");
   }
 
   /**
@@ -270,7 +277,7 @@ export class DebugUtils {
     Object.entries(buttonMappings).forEach(([buttonId, action]) => {
       const button = document.getElementById(buttonId);
       if (button) {
-        button.addEventListener('click', action);
+        button.addEventListener("click", action);
       }
     });
   }

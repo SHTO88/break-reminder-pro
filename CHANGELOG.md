@@ -5,6 +5,17 @@ All notable changes to Break Reminder Pro will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.0] - 2026-09-24
+
+### Added
+
+- **Hardware & Presentation Meeting Detection** — Detects active webcam/microphone usage and presentation or full-screen modes, supporting Google Meet, Teams, Zoom, and custom interview platforms.
+- **Meeting Reason Display** — Shows the specific detection reason (e.g. *"Microphone active by: msedge.exe"*) in the notification toast and timer status.
+
+### Fixed
+
+- **False Positives from Ended Browser Meetings** — Prevents breaks from being postponed by idle or closed meeting tabs in browsers.
+
 ## [1.2.1] - 2026-09-20
 
 ### Fixed
