@@ -5,6 +5,17 @@ All notable changes to Break Reminder Pro will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.0] - 2026-09-25
+
+### Added
+
+- **1-Click In-App Updates** — Automatic in-place download and install with a real-time progress bar.
+
+### Fixed
+
+- **Meeting Detection on Fullscreen Videos** — Fixed false meeting detection when watching YouTube or media in fullscreen.
+- **Autostart Persistence** — Preserves Windows startup registry keys across updates and self-heals if missing.
+
 ## [1.3.0] - 2026-09-24
 
 ### Added

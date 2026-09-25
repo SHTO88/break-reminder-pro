@@ -5,6 +5,7 @@ use simplelog::{
 };
 use std::fs;
 use std::fs::OpenOptions;
+use std::io::{Read, Write};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Mutex, OnceLock};
 use tauri::menu::{Menu, MenuItem};
@@ -297,14 +298,127 @@ fn show_update_notification(
     version: String,
     notes: String,
     download_url: String,
+    release_url: Option<String>,
     published_at: String,
 ) -> Result<(), String> {
     info!("🔔 Showing update notification for version: {}", version);
 
+    let rel_url = release_url.unwrap_or_else(|| download_url.clone());
     WindowManager::close_existing_window(&app_handle, "update_notification");
     let config =
-        WindowConfig::update_notification(&app_handle, version, notes, download_url, published_at);
+        WindowConfig::update_notification(&app_handle, version, notes, download_url, rel_url, published_at);
     WindowManager::create_window(app_handle, config)
+}
+
+#[derive(Clone, Serialize)]
+struct DownloadProgressPayload {
+    downloaded: u64,
+    total: u64,
+    percent: f64,
+}
+
+#[tauri::command]
+async fn download_and_install_update(
+    app_handle: tauri::AppHandle,
+    download_url: String,
+) -> Result<(), String> {
+    info!("📥 Direct update download initiated: {}", download_url);
+
+    let handle = app_handle.clone();
+    let temp_installer_path = tauri::async_runtime::spawn_blocking(move || -> Result<std::path::PathBuf, String> {
+        let temp_dir = std::env::temp_dir();
+        let installer_path = temp_dir.join("BreakReminderPro-Update.exe");
+
+        if installer_path.exists() {
+            let _ = fs::remove_file(&installer_path);
+        }
+
+        let agent = ureq::AgentBuilder::new()
+            .timeout(std::time::Duration::from_secs(180))
+            .redirects(5)
+            .build();
+
+        let response = agent
+            .get(&download_url)
+            .call()
+            .map_err(|e| format!("Download request failed: {}", e))?;
+
+        let total_size: u64 = response
+            .header("content-length")
+            .and_then(|val| val.parse::<u64>().ok())
+            .unwrap_or(0);
+
+        let mut reader = response.into_reader();
+        let mut file = OpenOptions::new()
+            .create(true)
+            .write(true)
+            .truncate(true)
+            .open(&installer_path)
+            .map_err(|e| format!("Failed to create temp installer file: {}", e))?;
+
+        let mut buffer = [0u8; 64 * 1024]; // 64KB buffer
+        let mut downloaded: u64 = 0;
+        let mut last_emit_percent = -1.0;
+
+        loop {
+            let bytes_read = match reader.read(&mut buffer) {
+                Ok(0) => break,
+                Ok(n) => n,
+                Err(e) if e.kind() == std::io::ErrorKind::Interrupted => continue,
+                Err(e) => return Err(format!("Error reading download stream: {}", e)),
+            };
+
+            file.write_all(&buffer[..bytes_read])
+                .map_err(|e| format!("Error writing installer to disk: {}", e))?;
+
+            downloaded += bytes_read as u64;
+
+            let percent = if total_size > 0 {
+                (downloaded as f64 / total_size as f64 * 100.0).min(100.0)
+            } else {
+                0.0
+            };
+
+            if (percent - last_emit_percent) >= 1.0 || percent >= 100.0 {
+                last_emit_percent = percent;
+                let _ = handle.emit(
+                    "update-download-progress",
+                    DownloadProgressPayload {
+                        downloaded,
+                        total: total_size,
+                        percent,
+                    },
+                );
+            }
+        }
+
+        file.flush().map_err(|e| format!("Failed to flush installer file: {}", e))?;
+        info!("✅ Update downloaded to: {}", installer_path.display());
+        Ok(installer_path)
+    })
+    .await
+    .map_err(|e| format!("Download worker panicked: {}", e))??;
+
+    info!("🚀 Executing update installer with /UPDATE /R: {}", temp_installer_path.display());
+
+    #[cfg(target_os = "windows")]
+    {
+        let mut cmd = std::process::Command::new(&temp_installer_path);
+        cmd.arg("/UPDATE");
+        cmd.arg("/R");
+        if let Err(e) = cmd.spawn() {
+            return Err(format!("Failed to start installer: {}", e));
+        }
+
+        info!("🚪 Exiting Break Reminder Pro to allow in-place upgrade...");
+        app_handle.exit(0);
+        Ok(())
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        Err("In-app update is only supported on Windows".to_string())
+    }
 }
 
 
@@ -1105,6 +1219,101 @@ fn is_microphone_in_use_by_meeting_app() -> Result<Option<String>, String> {
 }
 
 #[cfg(target_os = "windows")]
+fn classify_fullscreen_window(
+    proc_name: &str,
+    title: &str,
+    class_name: &str,
+) -> Option<String> {
+    let proc_lower = proc_name.to_lowercase();
+    let title_lower = title.to_lowercase();
+    let class_lower = class_name.to_lowercase();
+
+    // 1. Explicit Exclusions: Video playback, media streaming, and media players.
+    // These frequently run in fullscreen, but MUST NEVER be flagged as meetings.
+    let is_media_or_video = title_lower.contains("youtube")
+        || title_lower.contains("netflix")
+        || title_lower.contains("twitch")
+        || title_lower.contains("prime video")
+        || title_lower.contains("disney+")
+        || title_lower.contains("hulu")
+        || title_lower.contains("vimeo")
+        || title_lower.contains("dailymotion")
+        || title_lower.contains("crunchyroll")
+        || title_lower.contains("bilibili")
+        || title_lower.contains("plex")
+        || title_lower.contains("stremio")
+        || title_lower.contains("hotstar");
+
+    let is_media_player = proc_lower.contains("vlc.exe")
+        || proc_lower.contains("wmplayer.exe")
+        || proc_lower.contains("mpv.exe")
+        || proc_lower.contains("potplayer")
+        || proc_lower.contains("kmplayer")
+        || proc_lower.contains("gomp")
+        || proc_lower.contains("foobar2000")
+        || proc_lower.contains("musicbee")
+        || proc_lower.contains("spotify");
+
+    if is_media_or_video || is_media_player {
+        return None;
+    }
+
+    // 2. PowerPoint Slide Show (class "screenClass" or "powerpnt.exe")
+    if proc_lower.contains("powerpnt.exe") || class_lower == "screenclass" {
+        return Some("PowerPoint Presentation".to_string());
+    }
+
+    // 3. Dedicated Presentation / Slide software
+    if proc_lower.contains("impress.exe") || proc_lower.contains("keynote") {
+        return Some("Presentation Active".to_string());
+    }
+
+    // 4. Meeting signatures in window title (Google Meet, Zoom, Teams, Webex)
+    let meeting_title_keywords = [
+        "google meet",
+        "meet.google.com",
+        "zoom meeting",
+        "zoom webinar",
+        "teams meeting",
+        "webex meeting",
+        "cisco webex",
+    ];
+    if meeting_title_keywords.iter().any(|k| title_lower.contains(k)) {
+        return Some(format!("Meeting: {}", title));
+    }
+
+    // Also detect Google Meet tab title format ("Meet - ...")
+    if title_lower.starts_with("meet - ") || title_lower.contains(" meet - ") {
+        return Some(format!("Google Meet: {}", title));
+    }
+
+    // 5. Assessment / Online Interview platforms in fullscreen
+    let assessment_keywords = [
+        "hackerrank",
+        "codility",
+        "codesignal",
+        "coderpad",
+        "hirevue",
+        "mettl",
+        "testgorilla",
+        "talview",
+        "karat",
+        "proctored exam",
+        "proctor",
+        "assessment test",
+        "online assessment",
+        "technical interview",
+        "coding interview",
+    ];
+    if assessment_keywords.iter().any(|k| title_lower.contains(k)) {
+        return Some(format!("Assessment / Interview: {}", title));
+    }
+
+    // Default: Generic full-screen windows (browsers browsing web, games, text editors) are NOT meetings
+    None
+}
+
+#[cfg(target_os = "windows")]
 fn is_presentation_or_fullscreen_active() -> Result<Option<String>, String> {
     use windows::Win32::UI::Shell::{
         SHQueryUserNotificationState,
@@ -1112,19 +1321,25 @@ fn is_presentation_or_fullscreen_active() -> Result<Option<String>, String> {
         QUNS_PRESENTATION_MODE,
         QUNS_RUNNING_D3D_FULL_SCREEN,
     };
-    use winapi::um::winuser::{GetForegroundWindow, GetWindowRect, GetDesktopWindow};
+    use winapi::um::winuser::{
+        GetClassNameW, GetDesktopWindow, GetForegroundWindow, GetWindowRect, GetWindowTextW,
+        GetWindowThreadProcessId,
+    };
     use winapi::shared::windef::RECT;
 
     let res = unsafe { SHQueryUserNotificationState() };
     if let Ok(state) = res {
+        // Presentation mode explicitly signaled by Windows Presentation Mode (e.g. PowerPoint or Windows Mobility Center)
         if state == QUNS_PRESENTATION_MODE {
             return Ok(Some("Presentation / Screen Share Mode".to_string()));
         }
-        if state == QUNS_RUNNING_D3D_FULL_SCREEN {
-            return Ok(Some("Full-screen 3D Application".to_string()));
-        }
-        if state == QUNS_BUSY {
-            // Check if there is an actual foreground window that covers the entire desktop
+
+        // When a window is running full-screen, inspect the foreground window to see if it is a
+        // legitimate presentation, interview, or assessment.
+        // NOTE: QUNS_RUNNING_D3D_FULL_SCREEN and QUNS_BUSY are also triggered by normal video
+        // playback (e.g. YouTube in fullscreen), games, media players, and browser F11 fullscreen.
+        // These MUST NOT be detected as meetings!
+        if state == QUNS_BUSY || state == QUNS_RUNNING_D3D_FULL_SCREEN {
             unsafe {
                 let fg_hwnd = GetForegroundWindow();
                 if !fg_hwnd.is_null() {
@@ -1133,12 +1348,33 @@ fn is_presentation_or_fullscreen_active() -> Result<Option<String>, String> {
                     GetWindowRect(fg_hwnd, &mut fg_rect);
                     GetWindowRect(GetDesktopWindow(), &mut desk_rect);
 
-                    if fg_rect.left <= desk_rect.left
+                    let covers_screen = fg_rect.left <= desk_rect.left
                         && fg_rect.top <= desk_rect.top
                         && fg_rect.right >= desk_rect.right
-                        && fg_rect.bottom >= desk_rect.bottom
-                    {
-                        return Ok(Some("Full-screen Exclusive Application".to_string()));
+                        && fg_rect.bottom >= desk_rect.bottom;
+
+                    if covers_screen {
+                        let mut pid: u32 = 0;
+                        GetWindowThreadProcessId(fg_hwnd, &mut pid);
+
+                        let proc_name = with_refreshed_processes(|sys| {
+                            sys.processes()
+                                .values()
+                                .find(|p| p.pid().as_u32() == pid)
+                                .map(|p| p.name().to_string())
+                        }).unwrap_or_default();
+
+                        let mut title_buf = [0u16; 512];
+                        let title_len = GetWindowTextW(fg_hwnd, title_buf.as_mut_ptr(), 512);
+                        let title = String::from_utf16_lossy(&title_buf[..title_len.max(0) as usize]);
+
+                        let mut class_buf = [0u16; 256];
+                        let class_len = GetClassNameW(fg_hwnd, class_buf.as_mut_ptr(), 256);
+                        let class_name = String::from_utf16_lossy(&class_buf[..class_len.max(0) as usize]);
+
+                        if let Some(reason) = classify_fullscreen_window(&proc_name, &title, &class_name) {
+                            return Ok(Some(reason));
+                        }
                     }
                 }
             }
@@ -1656,6 +1892,29 @@ pub fn run() {
                 error!("❌ Main window not found during setup!");
             }
 
+            // Self-heal autostart: ensure Windows registry matches settings.json
+            if let Ok(Some(settings)) = load_settings(app.handle().clone()) {
+                if settings.autostart {
+                    let autostart_mgr = app.handle().autolaunch();
+                    match autostart_mgr.is_enabled() {
+                        Ok(false) => {
+                            info!("🔄 Settings specify autostart=true but registry key is missing. Restoring...");
+                            if let Err(e) = autostart_mgr.enable() {
+                                warn!("⚠️ Failed to restore autostart on startup: {}", e);
+                            } else {
+                                info!("✅ Autostart successfully restored on startup");
+                            }
+                        }
+                        Ok(true) => {
+                            info!("✅ Autostart is active in Windows registry");
+                        }
+                        Err(e) => {
+                            warn!("⚠️ Could not check autostart status on startup: {}", e);
+                        }
+                    }
+                }
+            }
+
             info!("Step 4: Setup callback complete");
             Ok(())
         })
@@ -1688,6 +1947,7 @@ pub fn run() {
             get_app_version,
             open_url,
             show_update_notification,
+            download_and_install_update,
             set_media_was_playing,
             get_media_was_playing,
             clear_media_was_playing
@@ -1737,4 +1997,63 @@ mod tests {
         assert!(result.is_ok(), "check_browser_meeting_debug should not error");
         println!("check_browser_meeting_debug output: {:?}", result.unwrap());
     }
+
+    #[test]
+    #[cfg(target_os = "windows")]
+    fn test_classify_fullscreen_window_youtube_ignored() {
+        let chrome_yt = classify_fullscreen_window(
+            "chrome.exe",
+            "Rick Astley - Never Gonna Give You Up (Official Music Video) - YouTube - Google Chrome",
+            "Chrome_WidgetWin_1",
+        );
+        assert_eq!(chrome_yt, None, "YouTube in Chrome must not be detected as meeting");
+
+        let edge_yt = classify_fullscreen_window(
+            "msedge.exe",
+            "YouTube - Microsoft Edge",
+            "Chrome_WidgetWin_1",
+        );
+        assert_eq!(edge_yt, None, "YouTube in Edge must not be detected as meeting");
+
+        let firefox_yt = classify_fullscreen_window(
+            "firefox.exe",
+            "Lofi Hip Hop - YouTube — Mozilla Firefox",
+            "MozillaWindowClass",
+        );
+        assert_eq!(firefox_yt, None, "YouTube in Firefox must not be detected as meeting");
+    }
+
+    #[test]
+    #[cfg(target_os = "windows")]
+    fn test_classify_fullscreen_window_media_players_ignored() {
+        let vlc = classify_fullscreen_window("vlc.exe", "movie.mkv - VLC media player", "Qt5QWindowIcon");
+        assert_eq!(vlc, None, "VLC must not be detected as meeting");
+
+        let netflix = classify_fullscreen_window("chrome.exe", "Stranger Things | Netflix - Google Chrome", "Chrome_WidgetWin_1");
+        assert_eq!(netflix, None, "Netflix must not be detected as meeting");
+
+        let twitch = classify_fullscreen_window("chrome.exe", "Twitch - Google Chrome", "Chrome_WidgetWin_1");
+        assert_eq!(twitch, None, "Twitch must not be detected as meeting");
+
+        let game = classify_fullscreen_window("game.exe", "Cyberpunk 2077", "GameWindowClass");
+        assert_eq!(game, None, "Games must not be detected as meeting");
+    }
+
+    #[test]
+    #[cfg(target_os = "windows")]
+    fn test_classify_fullscreen_window_presentation_detected() {
+        let ppt = classify_fullscreen_window("powerpnt.exe", "PowerPoint Slide Show - [Deck1]", "screenClass");
+        assert_eq!(ppt, Some("PowerPoint Presentation".to_string()));
+    }
+
+    #[test]
+    #[cfg(target_os = "windows")]
+    fn test_classify_fullscreen_window_assessments_and_meetings_detected() {
+        let hackerrank = classify_fullscreen_window("chrome.exe", "Solve Challenge | HackerRank - Google Chrome", "Chrome_WidgetWin_1");
+        assert!(hackerrank.is_some(), "HackerRank should be detected");
+
+        let meet = classify_fullscreen_window("chrome.exe", "Meet - abc-defg-hij - Google Chrome", "Chrome_WidgetWin_1");
+        assert!(meet.is_some(), "Google Meet should be detected");
+    }
 }
+

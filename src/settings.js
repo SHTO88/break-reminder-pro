@@ -242,15 +242,24 @@ window.addEventListener("DOMContentLoaded", async () => {
 
   DebugUtils.setupDebugListeners(debugButtonMappings);
 
-  // Check autostart status on startup
+  // Check autostart status on startup and self-heal if registry key was lost
   try {
     const isEnabled = await invoke('is_autostart_enabled');
-    if (isEnabled !== document.getElementById("autostart").checked) {
+    const shouldBeEnabled = savedSettings && savedSettings.autostart === true;
+
+    if (shouldBeEnabled && !isEnabled) {
+      console.log('🔄 Autostart was enabled in settings but missing in Windows registry. Restoring...');
+      await invoke('enable_autostart');
+      document.getElementById("autostart").checked = true;
+    } else if (!shouldBeEnabled && isEnabled) {
+      console.log('🔄 Autostart was disabled in settings but active in Windows registry. Disabling...');
+      await invoke('disable_autostart');
+      document.getElementById("autostart").checked = false;
+    } else {
       document.getElementById("autostart").checked = isEnabled;
-      await saveSettings();
     }
   } catch (error) {
-    console.error('Failed to check autostart status:', error);
+    console.error('Failed to reconcile autostart status:', error);
   }
 
   DebugUtils.log('Break Reminder Pro settings page initialized successfully');

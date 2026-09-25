@@ -690,6 +690,22 @@ window.addEventListener("DOMContentLoaded", async () => {
   const savedSettings = await loadSettings();
   applySettingsToUI(savedSettings);
 
+  // Ensure autostart state matches user settings on startup
+  if (savedSettings && savedSettings.autostart) {
+    invoke("is_autostart_enabled")
+      .then((isEnabled) => {
+        if (!isEnabled) {
+          console.log("🔄 Restoring autostart based on saved settings...");
+          invoke("enable_autostart").catch((err) =>
+            console.error("Failed to enable autostart on startup:", err),
+          );
+        }
+      })
+      .catch((err) =>
+        console.error("Failed to check autostart on startup:", err),
+      );
+  }
+
   // Initialize UI state
   updateTimerDisplay();
   updateTimerControls();

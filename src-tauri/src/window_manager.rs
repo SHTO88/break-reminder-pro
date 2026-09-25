@@ -369,10 +369,11 @@ impl WindowConfig {
         version: String,
         notes: String,
         download_url: String,
+        release_url: String,
         published_at: String,
     ) -> Self {
         let window_width = 500.0;
-        let window_height = 480.0;
+        let window_height = 520.0;
         let position = WindowManager::get_screen_center_position(app_handle, window_width, window_height);
 
         // Escape the strings for safe embedding in a JS string literal.
@@ -381,12 +382,13 @@ impl WindowConfig {
         let version_json     = serde_json::to_string(&version).unwrap_or_else(|_| "\"\"".into());
         let notes_json       = serde_json::to_string(&notes).unwrap_or_else(|_| "\"\"".into());
         let url_json         = serde_json::to_string(&download_url).unwrap_or_else(|_| "\"\"".into());
+        let rel_url_json     = serde_json::to_string(&release_url).unwrap_or_else(|_| "\"\"".into());
         let published_json   = serde_json::to_string(&published_at).unwrap_or_else(|_| "\"\"".into());
 
         let inject = format!(
-            "window.__UPDATE_DATA__ = {{ version: {}, notes: {}, downloadUrl: {}, publishedAt: {} }}; \
+            "window.__UPDATE_DATA__ = {{ version: {}, notes: {}, downloadUrl: {}, releaseUrl: {}, publishedAt: {} }}; \
              console.log('✅ Update data injected for version:', window.__UPDATE_DATA__.version);",
-            version_json, notes_json, url_json, published_json
+            version_json, notes_json, url_json, rel_url_json, published_json
         );
 
         Self {

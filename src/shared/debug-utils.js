@@ -146,33 +146,29 @@ export class DebugUtils {
 
   static async testUpdateCheck() {
     try {
-      this.log("Opening update notification with mock data...");
+      this.log("Opening update notification with direct update test data...");
       await invoke("show_update_notification", {
-        version: "v0.0.0-TEST",
+        version: "v1.4.0-TEST",
         notes: [
-          "## What's New",
+          "## What's New in v1.4.0-TEST",
           "",
           "### ✨ New Features",
-          "- Added smart break scheduling based on activity detection",
-          "- New **Focus Mode** that blocks distracting apps during breaks",
-          "- Pre-break warning now supports custom messages",
+          "- **1-Click In-Place Update**: Automatic download with real-time progress bar",
+          "- **Seamless Install**: No more 'uninstall before installing' prompt",
+          "- **Autostart Self-Healing**: Automatically preserves and restores Windows autostart settings",
           "",
           "### 🐛 Bug Fixes",
-          "- Fixed crash on break end when media player was running",
-          "- Resolved 00:00 freeze caused by blocking `play_chime` call",
-          "- Fixed nested scrollbar in update notification window",
-          "",
-          "### ⚡ Performance",
-          "- Reduced startup time by ~40%",
-          "- Media control now non-blocking for instant break close",
+          "- Resolved autostart turning off after updates",
+          "- Fixed installer deleting shortcuts and settings",
           "",
           "---",
-          "_Thank you for using Break Reminder Pro!_",
+          "_Click 'Update Now' below to test the in-app download and update flow!_",
         ].join("\n"),
-        downloadUrl: "https://github.com",
+        downloadUrl: "https://github.com/SHTO88/break-reminder-pro/releases/download/v1.3.0/Break.Reminder.Pro_1.3.0_x64-setup.exe",
+        releaseUrl: "https://github.com/SHTO88/break-reminder-pro/releases/tag/v1.3.0",
         publishedAt: new Date().toISOString(),
       });
-      this.log("✅ Update notification window opened");
+      this.log("✅ Update notification window opened with 1-click update enabled");
     } catch (error) {
       this.log(`❌ Error showing update notification: ${error}`);
     }

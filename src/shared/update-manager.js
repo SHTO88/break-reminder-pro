@@ -119,11 +119,20 @@ export class UpdateManager {
   async showUpdateNotification(release) {
     try {
       console.log('🔔 Showing update notification for version:', release.tag_name);
+
+      // Locate direct Windows NSIS installer (.exe) from GitHub release assets
+      const assets = release.assets || [];
+      const exeAsset = assets.find(a => 
+        a.name.toLowerCase().endsWith('.exe') && !a.name.toLowerCase().includes('portable')
+      ) || assets.find(a => a.name.toLowerCase().endsWith('.exe'));
+
+      const directDownloadUrl = exeAsset ? exeAsset.browser_download_url : '';
       
       await invoke('show_update_notification', {
         version: release.tag_name,
         notes: release.body || 'No release notes available.',
-        downloadUrl: release.html_url,
+        downloadUrl: directDownloadUrl || release.html_url,
+        releaseUrl: release.html_url,
         publishedAt: release.published_at
       });
     } catch (error) {

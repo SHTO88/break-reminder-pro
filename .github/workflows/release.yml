@@ -193,11 +193,18 @@ jobs:
             const assets = release.data.assets;
             let downloadSection = '\n### 📥 Downloads\n\n';
             
-            assets.forEach(asset => {
-              if (asset.name.endsWith('.msi')) {
-                downloadSection += `- **Windows Installer (MSI)**: [${asset.name}](${asset.browser_download_url}) (${(asset.size / 1024 / 1024).toFixed(1)} MB)\n`;
-              } else if (asset.name.endsWith('.exe')) {
-                downloadSection += `- **Windows Installer (EXE - Recommended)**: [${asset.name}](${asset.browser_download_url}) (${(asset.size / 1024 / 1024).toFixed(1)} MB)\n`;
+            // List EXE (NSIS) first as it supports seamless in-place upgrades
+            const sortedAssets = [...assets].sort((a, b) => {
+              if (a.name.endsWith('.exe')) return -1;
+              if (b.name.endsWith('.exe')) return 1;
+              return 0;
+            });
+
+            sortedAssets.forEach(asset => {
+              if (asset.name.endsWith('.exe')) {
+                downloadSection += `- **Windows Installer (EXE - Recommended)**: [${asset.name}](${asset.browser_download_url}) (${(asset.size / 1024 / 1024).toFixed(1)} MB) *(supports 1-click in-place update)*\n`;
+              } else if (asset.name.endsWith('.msi')) {
+                downloadSection += `- **Windows Installer (MSI)**: [${asset.name}](${asset.browser_download_url}) (${(asset.size / 1024 / 1024).toFixed(1)} MB) *(for enterprise / GPO deployment)*\n`;
               }
             });
 
